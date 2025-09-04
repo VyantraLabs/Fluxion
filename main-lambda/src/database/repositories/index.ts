@@ -1,0 +1,214 @@
+import { UserRepository } from './UserRepository';
+import { InvoiceRepository } from './InvoiceRepository';
+import { PaymentRepository } from './PaymentRepository';
+import { PayrollBatchRepository } from './PayrollBatchRepository';
+import { OrganizationRepository } from './OrganizationRepository';
+import { BlockchainNetworkRepository } from './BlockchainNetworkRepository';
+import { TokenRepository } from './TokenRepository';
+import { SmartContractRepository } from './SmartContractRepository';
+import { OrganizationSettingRepository } from './OrganizationSettingRepository';
+import { AuditLogRepository } from './AuditLogRepository';
+import { Logger } from '@/shared/utils/logger';
+
+/**
+ * Repository Manager - Central access point for all repositories
+ * Provides singleton instances and health checking
+ */
+class RepositoryManager {
+  private static instance: RepositoryManager;
+  private logger: Logger;
+  
+  // Repository instances
+  private _userRepository?: UserRepository;
+  private _invoiceRepository?: InvoiceRepository;
+  private _paymentRepository?: PaymentRepository;
+  private _payrollBatchRepository?: PayrollBatchRepository;
+  private _organizationRepository?: OrganizationRepository;
+  private _blockchainNetworkRepository?: BlockchainNetworkRepository;
+  private _tokenRepository?: TokenRepository;
+  private _smartContractRepository?: SmartContractRepository;
+  private _organizationSettingRepository?: OrganizationSettingRepository;
+  private _auditLogRepository?: AuditLogRepository;
+
+  private constructor() {
+    this.logger = new Logger('RepositoryManager');
+  }
+
+  static getInstance(): RepositoryManager {
+    if (!RepositoryManager.instance) {
+      RepositoryManager.instance = new RepositoryManager();
+    }
+    return RepositoryManager.instance;
+  }
+
+  // Lazy-loaded repository getters
+  get users(): UserRepository {
+    if (!this._userRepository) {
+      this._userRepository = new UserRepository();
+    }
+    return this._userRepository;
+  }
+
+  get invoices(): InvoiceRepository {
+    if (!this._invoiceRepository) {
+      this._invoiceRepository = new InvoiceRepository();
+    }
+    return this._invoiceRepository;
+  }
+
+  get payments(): PaymentRepository {
+    if (!this._paymentRepository) {
+      this._paymentRepository = new PaymentRepository();
+    }
+    return this._paymentRepository;
+  }
+
+  get payrollBatches(): PayrollBatchRepository {
+    if (!this._payrollBatchRepository) {
+      this._payrollBatchRepository = new PayrollBatchRepository();
+    }
+    return this._payrollBatchRepository;
+  }
+
+  get organizations(): OrganizationRepository {
+    if (!this._organizationRepository) {
+      this._organizationRepository = new OrganizationRepository();
+    }
+    return this._organizationRepository;
+  }
+
+  get blockchainNetworks(): BlockchainNetworkRepository {
+    if (!this._blockchainNetworkRepository) {
+      this._blockchainNetworkRepository = new BlockchainNetworkRepository();
+    }
+    return this._blockchainNetworkRepository;
+  }
+
+  get tokens(): TokenRepository {
+    if (!this._tokenRepository) {
+      this._tokenRepository = new TokenRepository();
+    }
+    return this._tokenRepository;
+  }
+
+  get smartContracts(): SmartContractRepository {
+    if (!this._smartContractRepository) {
+      this._smartContractRepository = new SmartContractRepository();
+    }
+    return this._smartContractRepository;
+  }
+
+  get organizationSettings(): OrganizationSettingRepository {
+    if (!this._organizationSettingRepository) {
+      this._organizationSettingRepository = new OrganizationSettingRepository();
+    }
+    return this._organizationSettingRepository;
+  }
+
+  get auditLogs(): AuditLogRepository {
+    if (!this._auditLogRepository) {
+      this._auditLogRepository = new AuditLogRepository();
+    }
+    return this._auditLogRepository;
+  }
+
+  /**
+   * Perform health check on all active repositories
+   */
+  async healthCheck(): Promise<{
+    status: 'healthy' | 'unhealthy';
+    repositories: Record<string, { status: 'healthy' | 'unhealthy'; latency: number; error?: string }>;
+  }> {
+    const repositories: Record<string, { status: 'healthy' | 'unhealthy'; latency: number; error?: string }> = {};
+    
+    // Get list of active repositories
+    const activeRepos = [
+      { name: 'users', repo: this._userRepository },
+      { name: 'invoices', repo: this._invoiceRepository },
+      { name: 'payments', repo: this._paymentRepository },
+      { name: 'payrollBatches', repo: this._payrollBatchRepository },
+      { name: 'organizations', repo: this._organizationRepository },
+      { name: 'blockchainNetworks', repo: this._blockchainNetworkRepository },
+      { name: 'tokens', repo: this._tokenRepository },
+      { name: 'smartContracts', repo: this._smartContractRepository },
+      { name: 'organizationSettings', repo: this._organizationSettingRepository },
+      { name: 'auditLogs', repo: this._auditLogRepository },
+    ].filter(item => item.repo !== undefined);
+
+    // Run health checks in parallel
+    const healthChecks = activeRepos.map(async ({ name, repo }) => {
+      try {
+        const health = await repo!.healthCheck();
+        repositories[name] = health;
+        return health.status === 'healthy';
+      } catch (error: any) {
+        repositories[name] = {
+          status: 'unhealthy',
+          latency: 0,
+          error: error.message,
+        };
+        return false;
+      }
+    });
+
+    const results = await Promise.all(healthChecks);
+    const allHealthy = results.every(healthy => healthy);
+
+    const overallStatus = allHealthy ? 'healthy' : 'unhealthy';
+    
+    this.logger.info('Repository health check completed', {
+      status: overallStatus,
+      activeRepositories: activeRepos.length,
+      healthyRepositories: results.filter(healthy => healthy).length,
+    });
+
+    return {
+      status: overallStatus,
+      repositories,
+    };
+  }
+
+  /**
+   * Clear all repository instances (useful for testing)
+   */
+  clearInstances(): void {
+    this._userRepository = undefined;
+    this._invoiceRepository = undefined;
+    this._paymentRepository = undefined;
+    this._payrollBatchRepository = undefined;
+    this._organizationRepository = undefined;
+    this._blockchainNetworkRepository = undefined;
+    this._tokenRepository = undefined;
+    this._smartContractRepository = undefined;
+    this._organizationSettingRepository = undefined;
+    this._auditLogRepository = undefined;
+
+    this.logger.debug('Repository instances cleared');
+  }
+}
+
+// Export singleton instance
+export const repositories = RepositoryManager.getInstance();
+
+// Export individual repository classes for direct use if needed
+export {
+  UserRepository,
+  InvoiceRepository,
+  PaymentRepository,
+  PayrollBatchRepository,
+  OrganizationRepository,
+  BlockchainNetworkRepository,
+  TokenRepository,
+  SmartContractRepository,
+  OrganizationSettingRepository,
+  AuditLogRepository,
+};
+
+// Export BaseRepository separately
+export { BaseRepository } from './BaseRepository';
+
+// Export repository manager class
+export { RepositoryManager };
+
+// Default export
+export default repositories;

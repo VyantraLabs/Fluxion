@@ -1,0 +1,406 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fluxion MVP - Crypto-native invoicing backend
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+
+  JWTSecret:
+    Type: String
+    NoEcho: true
+    Description: JWT secret for authentication (provide via parameter or SSM)
+    Default: '{{resolve:ssm:/fluxion/jwt-secret:1}}'
+
+  AlchemyAPIKey:
+    Type: String
+    NoEcho: true
+    Description: Alchemy API key for Polygon RPC
+    Default: '{{resolve:ssm:/fluxion/alchemy-api-key:1}}'
+
+  FromEmail:
+    Type: String
+    Default: noreply@fluxion.pay
+    Description: Email address for sending notifications
+
+  FrontendURL:
+    Type: String
+    Default: https://app.fluxion.pay
+    Description: Frontend application URL for payment links
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        DYNAMODB_TABLE: !Ref FluxionTable
+        NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
+        JWT_SECRET: !Ref JWTSecret
+        POLYGON_RPC_URL: https://polygon-mainnet.g.alchemy.com/v2/
+        ALCHEMY_API_KEY: !Ref AlchemyAPIKey
+        FROM_EMAIL: !Ref FromEmail
+        FROM_NAME: Fluxion
+        FRONTEND_URL: !Ref FrontendURL
+        LOG_LEVEL: !If [IsProd, info, debug]
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+  IsStaging: !Equals [!Ref Environment, staging]
+
+Resources:
+  # Main Lambda Function - All Business Logic
+  MainLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub fluxion-main-${Environment}
+      CodeUri: main-lambda/
+      Handler: dist/index.handler
+      MemorySize: 1024
+      Timeout: 30
+      ReservedConcurrencyLimit: !If [IsProd, 100, 20]
+      Environment:
+        Variables:
+          NODE_ENV: !If [IsProd, production, development]
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FluxionApi
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FluxionTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt NotificationQueue.QueueName
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/fluxion-main-${Environment}:*'
+
+  # Notification Lambda Function - Async Processing
+  NotificationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub fluxion-notification-${Environment}
+      CodeUri: notification-lambda/
+      Handler: dist/index.handler
+      MemorySize: 256
+      Timeout: 60
+      ReservedConcurrencyLimit: !If [IsProd, 50, 10]
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt NotificationQueue.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 5
+      Policies:
+        - SESCrudPolicy:
+            IdentityName: !Ref FromEmail
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/fluxion-notification-${Environment}:*'
+
+  # API Gateway
+  FluxionApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub fluxion-api-${Environment}
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: !If 
+          - IsProd
+          - "'https://fluxion.pay,https://app.fluxion.pay'"
+          - "'*'"
+        AllowCredentials: false
+        MaxAge: "'86400'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsProd
+                - "'https://app.fluxion.pay'"
+                - "'*'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsProd
+                - "'https://app.fluxion.pay'"
+                - "'*'"
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: !If [IsProd, ERROR, INFO]
+          DataTraceEnabled: !If [IsProd, false, true]
+          MetricsEnabled: true
+          ThrottlingRateLimit: !If [IsProd, 1000, 100]
+          ThrottlingBurstLimit: !If [IsProd, 2000, 200]
+
+  # DynamoDB Table - Single Table Design
+  FluxionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub fluxion-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProd, true, false]
+      SSESpecification:
+        SSEEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Fluxion
+        - Key: Component
+          Value: Database
+
+  # SQS Queue for Notifications
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub fluxion-notifications-${Environment}
+      VisibilityTimeoutSeconds: 360  # 6x Lambda timeout
+      MessageRetentionPeriod: 1209600  # 14 days
+      DelaySeconds: 0
+      MaxReceiveCount: 3
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Fluxion
+        - Key: Component
+          Value: Notifications
+
+  # Dead Letter Queue for Failed Notifications
+  NotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub fluxion-notifications-dlq-${Environment}
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Fluxion
+        - Key: Component
+          Value: NotificationsDLQ
+
+  # CloudWatch Log Groups
+  MainLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/fluxion-main-${Environment}
+      RetentionInDays: !If [IsProd, 30, 7]
+
+  NotificationLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/fluxion-notification-${Environment}
+      RetentionInDays: !If [IsProd, 30, 7]
+
+  # CloudWatch Alarms
+  MainLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub fluxion-main-errors-${Environment}
+      AlarmDescription: Main Lambda function errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainLambda
+
+  NotificationLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub fluxion-notification-errors-${Environment}
+      AlarmDescription: Notification Lambda function errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref NotificationLambda
+
+  # API Gateway Alarms
+  ApiGatewayErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub fluxion-api-errors-${Environment}
+      AlarmDescription: API Gateway 5xx errors
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub fluxion-api-${Environment}
+        - Name: Stage
+          Value: !Ref Environment
+
+  # DynamoDB Alarms
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub fluxion-dynamodb-throttles-${Environment}
+      AlarmDescription: DynamoDB throttling events
+      MetricName: ReadThrottles
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref FluxionTable
+
+  # Custom Domain (Production only)
+  ApiDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Condition: IsProd
+    Properties:
+      DomainName: api.fluxion.pay
+      SecurityPolicy: TLS_1_2
+      EndpointConfiguration:
+        Types:
+          - EDGE
+      # You'll need to provide a certificate ARN for production
+      # CertificateArn: !Ref SSLCertificate
+
+  # Route 53 Record for Custom Domain (Production only)
+  # ApiDNSRecord:
+  #   Type: AWS::Route53::RecordSet
+  #   Condition: IsProd
+  #   Properties:
+  #     HostedZoneId: YOUR_HOSTED_ZONE_ID
+  #     Name: api.fluxion.pay
+  #     Type: A
+  #     AliasTarget:
+  #       DNSName: !GetAtt ApiDomainName.DistributionDomainName
+  #       HostedZoneId: !GetAtt ApiDomainName.DistributionHostedZoneId
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${FluxionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub fluxion-api-url-${Environment}
+
+  CustomApiUrl:
+    Condition: IsProd
+    Description: Custom domain API URL
+    Value: https://api.fluxion.pay
+    Export:
+      Name: !Sub fluxion-custom-api-url-${Environment}
+
+  MainLambdaArn:
+    Description: Main Lambda function ARN
+    Value: !GetAtt MainLambda.Arn
+    Export:
+      Name: !Sub fluxion-main-lambda-arn-${Environment}
+
+  NotificationLambdaArn:
+    Description: Notification Lambda function ARN
+    Value: !GetAtt NotificationLambda.Arn
+    Export:
+      Name: !Sub fluxion-notification-lambda-arn-${Environment}
+
+  DynamoDBTableName:
+    Description: DynamoDB table name
+    Value: !Ref FluxionTable
+    Export:
+      Name: !Sub fluxion-table-name-${Environment}
+
+  NotificationQueueUrl:
+    Description: SQS notification queue URL
+    Value: !Ref NotificationQueue
+    Export:
+      Name: !Sub fluxion-notification-queue-url-${Environment}
+
+  DeploymentInfo:
+    Description: Deployment information
+    Value: !Sub |
+      Environment: ${Environment}
+      Region: ${AWS::Region}
+      Timestamp: ${AWS::Timestamp}
+      Stack: ${AWS::StackName}

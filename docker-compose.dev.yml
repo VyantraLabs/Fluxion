@@ -1,0 +1,209 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fluxion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fluxion_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema-additions.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fluxion_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fluxion-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: fluxion-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - fluxion-network
+
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: fluxion-pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: password
+      DATABASES_DBNAME: fluxion_dev
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 10
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      SERVER_LIFETIME: 3600
+      SERVER_IDLE_TIMEOUT: 600
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: fluxion-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@fluxion.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: fluxion-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+  # Main Lambda for local development
+  main-lambda:
+    build:
+      context: ./main-lambda
+      dockerfile: Dockerfile.dev
+    container_name: fluxion-main-lambda
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      
+      # Database configuration
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: fluxion_dev
+      DB_SSL: false
+      DB_LOGGING: true
+      
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_CACHE_DB: 1
+      REDIS_SESSION_DB: 2
+      
+      # AWS configuration (for local development)
+      AWS_REGION: us-east-1
+      NOTIFICATION_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/123456789012/fluxion-notifications-dev
+      
+      # JWT configuration
+      JWT_SECRET: your-local-jwt-secret-change-in-production
+      JWT_EXPIRES_IN: 24h
+      
+      # Feature flags
+      ENABLE_RLS: true
+      ENABLE_AUDIT_LOGGING: true
+      ENABLE_REDIS_CACHE: true
+      
+      # Frontend URL
+      FRONTEND_URL: http://localhost:3001
+      
+      # Logging
+      LOG_LEVEL: debug
+      
+      # Default blockchain network
+      DEFAULT_BLOCKCHAIN_NETWORK: polygon
+
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./main-lambda/src:/app/src
+      - ./main-lambda/package.json:/app/package.json
+      - ./main-lambda/tsconfig.json:/app/tsconfig.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+  # Notification Lambda for local development
+  notification-lambda:
+    build:
+      context: ./notification-lambda
+      dockerfile: Dockerfile.dev
+    container_name: fluxion-notification-lambda
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      
+      # Database configuration (for logging/audit)
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: fluxion_dev
+      DB_SSL: false
+      
+      # AWS SES configuration
+      AWS_REGION: us-east-1
+      
+      # Logging
+      LOG_LEVEL: debug
+
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./notification-lambda/src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  fluxion-network:
+    driver: bridge
