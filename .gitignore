@@ -177,6 +177,8 @@ Thumbs.db
 
 # Claude AI tool files
 .claude/
+.claude/*
+.claude/agents/*
 
 # Local development files
 local-config.json

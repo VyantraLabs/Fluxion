@@ -1,0 +1,197 @@
+# Docker Compose for Fluxion Local Development
+# Includes PostgreSQL, Redis, PgBouncer, and pgAdmin
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fluxion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fluxion_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_MULTIPLE_DATABASES: fluxion_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema-additions.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./scripts/create-multiple-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fluxion_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fluxion-network
+
+  # Redis for Caching
+  redis:
+    image: redis:7-alpine
+    container_name: fluxion-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fluxion-network
+
+  # PgBouncer for Connection Pooling
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: fluxion-pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: password
+      DATABASES_DBNAME: fluxion_dev
+      POOL_MODE: session
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 5
+      MAX_DB_CONNECTIONS: 50
+      MAX_USER_CONNECTIONS: 50
+      SERVER_ROUND_ROBIN: 1
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+  # pgAdmin for Database Management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: fluxion-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@fluxion.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./config/servers.json:/pgadmin4/servers.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fluxion-network
+
+  # Nginx for Local Development Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: fluxion-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/ssl:/etc/nginx/ssl
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - fluxion-network
+    profiles:
+      - proxy
+
+  # Grafana for Monitoring (Optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fluxion-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - fluxion-network
+    profiles:
+      - monitoring
+
+  # Prometheus for Metrics Collection (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fluxion-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - fluxion-network
+    profiles:
+      - monitoring
+
+  # Node Exporter for System Metrics (Optional)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: fluxion-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - fluxion-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  grafana_data:
+    driver: local
+  prometheus_data:
+    driver: local
+
+networks:
+  fluxion-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

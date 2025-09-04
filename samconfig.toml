@@ -1,0 +1,91 @@
+# SAM Configuration for Fluxion MVP
+
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "fluxion-backend"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "fluxion"
+region = "us-east-1"
+image_repositories = []
+
+[dev]
+[dev.global.parameters]
+stack_name = "fluxion-backend-dev"
+
+[dev.build.parameters]
+cached = true
+parallel = true
+
+[dev.validate.parameters]
+lint = true
+
+[dev.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+s3_prefix = "fluxion-dev"
+region = "us-east-1"
+parameter_overrides = [
+    "Environment=dev",
+    "FrontendURL=http://localhost:3001"
+]
+image_repositories = []
+
+[staging]
+[staging.global.parameters]
+stack_name = "fluxion-backend-staging"
+
+[staging.build.parameters]
+cached = true
+parallel = true
+
+[staging.validate.parameters]
+lint = true
+
+[staging.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "fluxion-staging"
+region = "us-east-1"
+parameter_overrides = [
+    "Environment=staging",
+    "FrontendURL=https://staging.fluxion.pay"
+]
+image_repositories = []
+
+[production]
+[production.global.parameters]
+stack_name = "fluxion-backend-prod"
+
+[production.build.parameters]
+cached = true
+parallel = true
+
+[production.validate.parameters]
+lint = true
+
+[production.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "fluxion-prod"
+region = "us-east-1"
+parameter_overrides = [
+    "Environment=prod",
+    "FrontendURL=https://app.fluxion.pay"
+]
+image_repositories = []
