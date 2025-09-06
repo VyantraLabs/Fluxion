@@ -14,6 +14,12 @@ import { PayrollBatch } from './entities/PayrollBatch';
 import { PayrollRecipient } from './entities/PayrollRecipient';
 import { OrganizationSetting } from './entities/OrganizationSetting';
 import { AuditLog } from './entities/AuditLog';
+// Production feature entities
+import { InvoiceTemplate } from './entities/InvoiceTemplate';
+import { InvoiceAccessToken } from './entities/InvoiceAccessToken';
+import { NotificationQueue } from './entities/NotificationQueue';
+import { NotificationSettings } from './entities/NotificationSettings';
+import { PaymentVerificationJob } from './entities/PaymentVerificationJob';
 
 const logger = new Logger('DataSource');
 
@@ -51,6 +57,12 @@ export const AppDataSource = new DataSource({
     PayrollRecipient,
     OrganizationSetting,
     AuditLog,
+    // Production feature entities
+    InvoiceTemplate,
+    InvoiceAccessToken,
+    NotificationQueue,
+    NotificationSettings,
+    PaymentVerificationJob,
   ],
   
   // Migration configuration
@@ -58,7 +70,7 @@ export const AppDataSource = new DataSource({
   migrationsTableName: 'fluxion_migrations',
   
   // Development settings
-  synchronize: config.environment === 'development',
+  synchronize: false, // Disabled to use migrations instead
   logging: config.database.logging,
   logger: config.database.logging ? new (require('../shared/utils/typeorm-logger').CustomTypeOrmLogger)() : false,
   
@@ -163,6 +175,9 @@ class DatabaseConnectionManager {
         'payroll_recipients',
         'organization_settings',
         'audit_logs',
+        'invoice_templates',
+        'notification_queue',
+        'notification_settings',
       ];
 
       for (const tableName of multiTenantTables) {
@@ -235,9 +250,10 @@ export const dbManager = DatabaseConnectionManager.getInstance();
 export async function setTenantContext(tenantId: string): Promise<void> {
   try {
     // PostgreSQL SET LOCAL doesn't support parameterized queries
-    // Validate that tenantId is a UUID to prevent SQL injection
+    // Validate that tenantId is a ULID or UUID to prevent SQL injection
+    const ulidRegex = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/i;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(tenantId)) {
+    if (!ulidRegex.test(tenantId) && !uuidRegex.test(tenantId)) {
       throw new Error('Invalid tenant ID format');
     }
     
@@ -265,7 +281,15 @@ export async function clearTenantContext(): Promise<void> {
  */
 export async function setUserContext(userId: string): Promise<void> {
   try {
-    await AppDataSource.query('SET LOCAL app.current_user_id = $1', [userId]);
+    // PostgreSQL SET LOCAL doesn't support parameterized queries
+    // Validate that userId is safe to prevent SQL injection
+    if (!userId || typeof userId !== 'string' || userId.length > 100) {
+      throw new Error('Invalid user ID format');
+    }
+    
+    // Escape single quotes to prevent SQL injection
+    const safeuserid = userId.replace(/'/g, "''");
+    await AppDataSource.query(`SET LOCAL app.current_user_id = '${safeuserid}'`);
   } catch (error: any) {
     logger.error('Failed to set user context', { error: error.message, userId });
     throw error;

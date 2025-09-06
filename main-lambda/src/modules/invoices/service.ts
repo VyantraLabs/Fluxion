@@ -1,350 +1,477 @@
-import { v4 as uuidv4 } from 'uuid';
-import { getDatabase } from '@/shared/database/client';
-import { getNotificationService } from '@/shared/notifications/client';
+import { repositories } from '@/database/repositories';
+import { Invoice, InvoiceStatus } from '@/database/entities/Invoice';
 import { Logger } from '@/shared/utils/logger';
 import { 
-  createNotFoundError, 
-  createValidationError, 
-  createForbiddenError 
-} from '@/shared/errors';
-import { 
-  Invoice, 
-  InvoiceEntity, 
-  CreateInvoiceDTO, 
-  UpdateInvoiceDTO,
-  InvoiceWithPayments 
-} from '@/types/invoice';
-import { PaginationParams, InvoiceData, PaymentData, UserData, NotificationData } from '@/types/common';
+  FluxionError,
+  ErrorCodes,
+  TenantContext,
+  QueryOptions
+} from '@/types/common';
+import { config } from '@/config';
+import { NotificationService } from '@/modules/notifications/service';
 
-// Type guard for payment data
-const isPaymentData = (data: InvoiceData | PaymentData | UserData | NotificationData): data is PaymentData => {
-  return 'payment_id' in data && 'tx_hash' in data;
-};
+export interface CreateInvoiceDto {
+  title: string;
+  description: string;
+  amount: number;
+  dueDate: string; // ISO date string
+  clientEmail: string;
+  clientName: string;
+  clientWallet?: string;
+  networkId: string;
+  tokenId: string;
+}
+
+export interface PublicInvoiceDto {
+  id: string;
+  title: string;
+  description?: string;
+  amount: string;
+  dueDate?: Date;
+  clientName?: string;
+  clientEmail?: string;
+  status: InvoiceStatus;
+  networkId: string;
+  tokenId: string;
+  network?: any;
+  token?: any;
+  paymentUrl: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total?: number;
+  nextToken?: string;
+}
+
+export interface InvoiceStatsResponse {
+  total: number;
+  byStatus: Record<string, number>;
+  totalAmount: string;
+  totalPaidAmount: string;
+  overdue: number;
+  dueSoon: number;
+}
 
 export class InvoiceService {
-  private db = getDatabase();
-  private notifications = getNotificationService();
   private logger = new Logger('InvoiceService');
+  private invoiceRepository = repositories.invoices;
+  private userRepository = repositories.users;
+  private organizationRepository = repositories.organizations;
+  private notificationService = new NotificationService();
 
   /**
    * Create a new invoice
    */
-  async create(data: CreateInvoiceDTO, creatorName?: string): Promise<Invoice> {
+  async createInvoice(tenantContext: TenantContext, userId: string, data: CreateInvoiceDto): Promise<Invoice> {
     this.logger.info('Creating invoice', { 
-      creator_wallet: data.creator_wallet,
-      amount: data.amount 
+      userId,
+      amount: data.amount,
+      tenantId: tenantContext.tenantId
     });
 
-    const invoiceId = uuidv4();
-    const now = new Date().toISOString();
-    
-    // Generate payment URL
-    const paymentUrl = `${process.env.FRONTEND_URL || 'https://app.fluxion.pay'}/pay/${invoiceId}`;
-
-    // Calculate line items if provided
-    let calculatedAmount = data.amount;
-    if (data.line_items && data.line_items.length > 0) {
-      calculatedAmount = data.line_items.reduce((total, item) => {
-        const itemAmount = item.quantity * item.rate;
-        return total + itemAmount;
-      }, 0);
-    }
-
-    const invoiceData: Invoice = {
-      invoice_id: invoiceId,
-      creator_wallet: data.creator_wallet,
-      client_email: data.client_email,
-      client_name: data.client_name,
-      amount: calculatedAmount,
-      description: data.description,
-      line_items: data.line_items?.map(item => ({
-        ...item,
-        id: item.id || uuidv4(),
-        amount: item.quantity * item.rate
-      })),
-      status: 'draft',
-      due_date: data.due_date,
-      payment_url: paymentUrl,
-      created_at: now,
-      updated_at: now
-    };
-
-    // Create database entity
-    const entity: InvoiceEntity = {
-      PK: `INV#${invoiceId}`,
-      SK: 'METADATA',
-      GSI1PK: `USER#${data.creator_wallet}`,
-      GSI1SK: now,
-      GSI2PK: 'STATUS#draft',
-      GSI2SK: now,
-      entityType: 'INVOICE',
-      created_at: now,
-      updated_at: now,
-      data: {
-        invoice_id: invoiceId,
-        creator_wallet: data.creator_wallet,
-        client_email: data.client_email,
-        client_name: data.client_name,
-        amount: calculatedAmount,
-        description: data.description,
-        line_items: invoiceData.line_items,
-        status: 'draft',
-        due_date: data.due_date,
-        payment_url: paymentUrl
-      }
-    };
-
     try {
-      await this.db.save(entity);
-      
-      this.logger.info('Invoice created successfully', { 
-        invoice_id: invoiceId,
-        amount: calculatedAmount 
+      // Get organization for invoice number generation
+      const organization = await this.organizationRepository.findById(tenantContext, tenantContext.tenantId);
+      if (!organization) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'Organization not found', 404);
+      }
+
+      // Verify the user exists (userId should be from JWT token)
+      const user = await this.userRepository.findById(tenantContext, userId);
+      if (!user) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'User not found', 404);
+      }
+
+      // Generate invoice number
+      const invoiceNumber = await this.invoiceRepository.generateInvoiceNumber(
+        tenantContext,
+        organization.slug
+      );
+
+      // Create invoice
+      const invoice = await this.invoiceRepository.create(tenantContext, {
+        invoiceNumber,
+        title: data.title,
+        description: data.description,
+        clientName: data.clientName,
+        clientEmail: data.clientEmail,
+        clientWallet: data.clientWallet,
+        amount: data.amount.toString(),
+        dueDate: new Date(data.dueDate),
+        networkId: data.networkId,
+        tokenId: data.tokenId,
+        createdBy: userId, // Use the userId directly
+        status: 'draft',
       });
 
-      // Send notification if invoice is not in draft status
-      if (entity.data.status === 'pending') {
-        await this.notifications.sendInvoiceCreated(invoiceData, creatorName);
+      this.logger.info('Invoice created successfully', { 
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        userId,
+        tenantId: tenantContext.tenantId
+      });
+
+      // Send notification if client email is provided
+      if (data.clientEmail) {
+        try {
+          await this.notificationService.sendNotification(tenantContext, {
+            type: 'invoice_sent',
+            recipientEmail: data.clientEmail,
+            templateData: {
+              invoiceId: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              invoiceTitle: data.title,
+              invoiceAmount: data.amount.toString(),
+              invoiceStatus: invoice.status,
+              invoiceDueDate: data.dueDate,
+              paymentUrl: `${config.frontend?.url || 'https://fluxion.app'}/invoice/${invoice.id}`,
+              recipientName: data.clientName || data.clientEmail,
+              recipientEmail: data.clientEmail,
+              clientName: data.clientName || data.clientEmail,
+              senderName: user.displayName || user.wallet_address,
+              companyName: organization.name,
+              systemUrl: config.frontend?.url || 'https://fluxion.app',
+              supportEmail: config.email?.supportEmail || 'support@fluxion.app',
+            },
+            priority: 'medium'
+          });
+
+          this.logger.info('Invoice notification sent', {
+            invoiceId: invoice.id,
+            recipient: data.clientEmail,
+            tenantId: tenantContext.tenantId
+          });
+        } catch (notificationError: any) {
+          // Don't fail invoice creation if notification fails
+          this.logger.error('Failed to send invoice notification', {
+            error: notificationError.message,
+            invoiceId: invoice.id,
+            recipient: data.clientEmail,
+            tenantId: tenantContext.tenantId
+          });
+        }
       }
 
-      return invoiceData;
-    } catch (error) {
-      this.logger.error('Failed to create invoice', { error, invoiceId });
+      return invoice;
+    } catch (error: any) {
+      this.logger.error('Failed to create invoice', { 
+        error: error.message,
+        userId,
+        tenantId: tenantContext.tenantId
+      });
       throw error;
     }
   }
 
   /**
-   * Get invoice by ID
+   * Get invoice by ID (authenticated)
    */
-  async findById(invoiceId: string, walletAddress?: string): Promise<Invoice> {
-    this.logger.info('Finding invoice by ID', { invoice_id: invoiceId });
-
-    const entity = await this.db.findById(`INV#${invoiceId}`, 'METADATA');
-    
-    if (!entity || entity.entityType !== 'INVOICE') {
-      throw createNotFoundError('Invoice', invoiceId);
-    }
-
-    const invoiceEntity = entity as InvoiceEntity;
-
-    // Check access permissions if wallet address is provided
-    if (walletAddress && invoiceEntity.data.creator_wallet !== walletAddress) {
-      throw createForbiddenError('You do not have permission to access this invoice');
-    }
-
-    const invoice: Invoice = {
-      invoice_id: invoiceEntity.data.invoice_id,
-      creator_wallet: invoiceEntity.data.creator_wallet,
-      client_email: invoiceEntity.data.client_email,
-      client_name: invoiceEntity.data.client_name,
-      amount: invoiceEntity.data.amount,
-      description: invoiceEntity.data.description,
-      line_items: invoiceEntity.data.line_items,
-      status: invoiceEntity.data.status,
-      due_date: invoiceEntity.data.due_date,
-      paid_at: invoiceEntity.data.paid_at,
-      payment_tx_hash: invoiceEntity.data.payment_tx_hash,
-      payment_url: invoiceEntity.data.payment_url,
-      pdf_url: invoiceEntity.data.pdf_url,
-      created_at: invoiceEntity.created_at,
-      updated_at: invoiceEntity.updated_at
-    };
-
-    this.logger.info('Invoice found', { 
-      invoice_id: invoiceId,
-      status: invoice.status 
+  async getInvoiceById(tenantContext: TenantContext, invoiceId: string): Promise<Invoice> {
+    this.logger.info('Finding invoice by ID', { 
+      invoiceId,
+      tenantId: tenantContext.tenantId
     });
-
-    return invoice;
-  }
-
-  /**
-   * Get invoice with payment information
-   */
-  async findByIdWithPayments(invoiceId: string, walletAddress?: string): Promise<InvoiceWithPayments> {
-    const invoice = await this.findById(invoiceId, walletAddress);
-
-    // Get related payments
-    const paymentsResult = await this.db.queryGSI1(`INV#${invoiceId}`, {
-      limit: 10,
-      scanIndexForward: false
-    });
-
-    const payments = paymentsResult.items
-      .filter(item => item.entityType === 'PAYMENT')
-      .map(item => {
-        const paymentData = item.data;
-        if (!isPaymentData(paymentData)) {
-          throw new Error('Expected payment data but got different type');
-        }
-        return {
-          payment_id: paymentData.payment_id,
-          tx_hash: paymentData.tx_hash,
-          amount: paymentData.amount,
-          status: paymentData.status,
-          created_at: item.created_at
-        };
-      });
-
-    return {
-      ...invoice,
-      payments
-    };
-  }
-
-  /**
-   * Get invoices for a user
-   */
-  async findByUser(
-    walletAddress: string, 
-    options: PaginationParams & { status?: string } = {}
-  ): Promise<{ items: Invoice[]; nextToken?: string; hasMore: boolean }> {
-    this.logger.info('Finding invoices by user', { 
-      wallet_address: walletAddress,
-      options 
-    });
-
-    let queryResult;
-
-    if (options.status) {
-      // Query by status using GSI2
-      queryResult = await this.db.queryGSI2(`STATUS#${options.status}`, {
-        limit: options.limit || 20,
-        nextToken: options.nextToken,
-        scanIndexForward: false
-      });
-
-      // Filter by user (since GSI2 is by status, not user)
-      queryResult.items = queryResult.items.filter(item => 
-        item.entityType === 'INVOICE' && 
-        (item as InvoiceEntity).data.creator_wallet === walletAddress
-      );
-    } else {
-      // Query by user using GSI1
-      queryResult = await this.db.queryGSI1(`USER#${walletAddress}`, {
-        limit: options.limit || 20,
-        nextToken: options.nextToken,
-        scanIndexForward: false
-      });
-
-      // Filter only invoices
-      queryResult.items = queryResult.items.filter(item => item.entityType === 'INVOICE');
-    }
-
-    const invoices: Invoice[] = queryResult.items.map(item => {
-      const invoiceEntity = item as InvoiceEntity;
-      return {
-        invoice_id: invoiceEntity.data.invoice_id,
-        creator_wallet: invoiceEntity.data.creator_wallet,
-        client_email: invoiceEntity.data.client_email,
-        client_name: invoiceEntity.data.client_name,
-        amount: invoiceEntity.data.amount,
-        description: invoiceEntity.data.description,
-        line_items: invoiceEntity.data.line_items,
-        status: invoiceEntity.data.status,
-        due_date: invoiceEntity.data.due_date,
-        paid_at: invoiceEntity.data.paid_at,
-        payment_tx_hash: invoiceEntity.data.payment_tx_hash,
-        payment_url: invoiceEntity.data.payment_url,
-        pdf_url: invoiceEntity.data.pdf_url,
-        created_at: invoiceEntity.created_at,
-        updated_at: invoiceEntity.updated_at
-      };
-    });
-
-    this.logger.info('Invoices found', { 
-      wallet_address: walletAddress,
-      count: invoices.length 
-    });
-
-    return {
-      items: invoices,
-      nextToken: queryResult.nextToken,
-      hasMore: !!queryResult.nextToken
-    };
-  }
-
-  /**
-   * Update an invoice
-   */
-  async update(
-    invoiceId: string, 
-    data: UpdateInvoiceDTO, 
-    walletAddress: string
-  ): Promise<Invoice> {
-    this.logger.info('Updating invoice', { 
-      invoice_id: invoiceId,
-      wallet_address: walletAddress 
-    });
-
-    // First, get the existing invoice to check permissions
-    const existingInvoice = await this.findById(invoiceId, walletAddress);
-
-    // Don't allow updates to paid invoices
-    if (existingInvoice.status === 'paid') {
-      throw createValidationError('Cannot update paid invoices');
-    }
-
-    const now = new Date().toISOString();
-    const updates: Partial<InvoiceEntity> = {};
-
-    // Prepare updates - start with existing invoice data
-    let updatedInvoiceData = { ...existingInvoice } as InvoiceData;
-    
-    // Apply updates
-    if (data.client_email) updatedInvoiceData.client_email = data.client_email;
-    if (data.client_name) updatedInvoiceData.client_name = data.client_name;
-    if (data.description) updatedInvoiceData.description = data.description;
-    if (data.due_date) updatedInvoiceData.due_date = data.due_date;
-    if (data.line_items) {
-      const lineItems = data.line_items.map(item => ({
-        ...item,
-        id: item.id || uuidv4(),
-        amount: item.quantity * item.rate
-      }));
-      const calculatedAmount = lineItems.reduce((total, item) => total + item.amount, 0);
-      updatedInvoiceData.line_items = lineItems;
-      updatedInvoiceData.amount = calculatedAmount;
-    }
-
-    // Handle status change
-    if (data.status && data.status !== existingInvoice.status) {
-      updatedInvoiceData.status = data.status;
-      updates.GSI2PK = `STATUS#${data.status}`;
-      updates.GSI2SK = now;
-    }
-    
-    // Set the updated data
-    updates.data = updatedInvoiceData;
-
-    if (Object.keys(updates).length === 0) {
-      return existingInvoice;
-    }
-
-    updates.updated_at = now;
 
     try {
-      await this.db.update(
-        `INV#${invoiceId}`, 
-        'METADATA', 
+      const invoice = await this.invoiceRepository.findById(tenantContext, invoiceId);
+      
+      if (!invoice) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'Invoice not found', 404);
+      }
+
+      this.logger.info('Invoice found', { 
+        invoiceId,
+        status: invoice.status,
+        tenantId: tenantContext.tenantId
+      });
+
+      return invoice;
+    } catch (error: any) {
+      this.logger.error('Failed to find invoice by ID', { 
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get public invoice (no authentication required)
+   */
+  async getPublicInvoice(invoiceId: string): Promise<PublicInvoiceDto> {
+    this.logger.info('Getting public invoice', { invoiceId });
+
+    try {
+      // Use a direct query without tenant context for public access
+      const invoice = await this.invoiceRepository.repository.findOne({
+        where: { id: invoiceId },
+        relations: ['network', 'token'],
+      });
+      
+      if (!invoice) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'Invoice not found', 404);
+      }
+
+      // Generate payment URL for public invoice
+      const paymentUrl = this.generateShareableLink(invoiceId);
+
+      // Return only public data (hide sensitive information)
+      const publicInvoice: PublicInvoiceDto = {
+        id: invoice.id,
+        title: invoice.title,
+        description: invoice.description,
+        amount: invoice.amount,
+        dueDate: invoice.dueDate,
+        clientName: invoice.clientName,
+        clientEmail: invoice.clientEmail,
+        status: invoice.status,
+        networkId: invoice.networkId,
+        tokenId: invoice.tokenId,
+        network: invoice.network,
+        token: invoice.token,
+        paymentUrl,
+        createdAt: invoice.createdAt,
+        updatedAt: invoice.updatedAt,
+      };
+
+      this.logger.info('Public invoice retrieved', { 
+        invoiceId,
+        status: invoice.status
+      });
+
+      return publicInvoice;
+    } catch (error: any) {
+      this.logger.error('Failed to get public invoice', { 
+        error: error.message,
+        invoiceId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoices for a user with pagination
+   */
+  async getUserInvoices(
+    tenantContext: TenantContext,
+    userId: string,
+    options: QueryOptions = {}
+  ): Promise<PaginatedResult<Invoice>> {
+    this.logger.info('Finding invoices by user', { 
+      userId,
+      options,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      // Verify the user exists (userId should be from JWT token)
+      const user = await this.userRepository.findById(tenantContext, userId);
+      if (!user) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'User not found', 404);
+      }
+
+      const queryOptions = {
+        limit: options.limit || 20,
+        nextToken: options.nextToken,
+        sortDirection: 'desc' as const
+      };
+
+      let result;
+      if (options.status) {
+        // Search by status and user
+        result = await this.invoiceRepository.searchInvoices(
+          tenantContext,
+          { status: options.status, createdBy: userId },
+          queryOptions
+        );
+      } else {
+        // Get all invoices for user
+        result = await this.invoiceRepository.findByUser(tenantContext, userId, queryOptions);
+      }
+
+      this.logger.info('Invoices found', { 
+        userId,
+        count: result.items.length,
+        total: result.total,
+        tenantId: tenantContext.tenantId
+      });
+
+      return {
+        items: result.items,
+        total: result.total,
+        nextToken: result.nextToken
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to find invoices by user', { 
+        error: error.message,
+        userId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get dashboard statistics for user's invoices
+   */
+  async getDashboardStats(
+    tenantContext: TenantContext,
+    userId: string
+  ): Promise<InvoiceStatsResponse> {
+    this.logger.info('Getting dashboard stats', { 
+      userId,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      // Verify the user exists (userId should be from JWT token)
+      const user = await this.userRepository.findById(tenantContext, userId);
+      if (!user) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'User not found', 404);
+      }
+
+      // Get all invoices for the user
+      const allInvoices = await this.invoiceRepository.findByUser(
+        tenantContext, 
+        userId, 
+        { limit: 1000 } // Get all invoices for stats
+      );
+
+      const invoices = allInvoices.items;
+      const totalInvoices = invoices.length;
+      
+      // Calculate totals
+      const totalAmount = invoices.reduce((sum, invoice) => 
+        sum + parseFloat(invoice.amount), 0
+      ).toString();
+      
+      const totalPaidAmount = invoices.reduce((sum, invoice) => 
+        sum + parseFloat(invoice.amountPaid), 0
+      ).toString();
+
+      // Count by status
+      const byStatus: Record<string, number> = {
+        draft: 0,
+        sent: 0,
+        paid: 0,
+        overdue: 0,
+        cancelled: 0,
+        partial: 0
+      };
+
+      let overdueCount = 0;
+      let dueSoonCount = 0; // Due within 7 days
+      const now = new Date();
+      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      invoices.forEach(invoice => {
+        byStatus[invoice.status]++;
+        
+        // Check for overdue
+        if (invoice.isOverdue) {
+          overdueCount++;
+        }
+        
+        // Check for due soon (within 7 days)
+        if (invoice.dueDate && invoice.status !== 'paid' && invoice.status !== 'cancelled') {
+          const dueDate = invoice.dueDate instanceof Date ? invoice.dueDate : new Date(invoice.dueDate);
+          if (dueDate <= sevenDaysFromNow && dueDate > now) {
+            dueSoonCount++;
+          }
+        }
+      });
+
+      const stats: InvoiceStatsResponse = {
+        total: totalInvoices,
+        byStatus,
+        totalAmount,
+        totalPaidAmount,
+        overdue: overdueCount,
+        dueSoon: dueSoonCount
+      };
+
+      this.logger.info('Dashboard stats calculated', { 
+        userId,
+        stats,
+        tenantId: tenantContext.tenantId
+      });
+
+      return stats;
+    } catch (error: any) {
+      this.logger.error('Failed to get dashboard stats', { 
+        error: error.message,
+        userId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update invoice status (only allow status updates for now)
+   */
+  async updateInvoiceStatus(
+    tenantContext: TenantContext,
+    invoiceId: string,
+    status: InvoiceStatus
+  ): Promise<Invoice> {
+    this.logger.info('Updating invoice status', { 
+      invoiceId,
+      newStatus: status,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      // Get the existing invoice
+      const existingInvoice = await this.invoiceRepository.findById(tenantContext, invoiceId);
+      
+      if (!existingInvoice) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'Invoice not found', 404);
+      }
+
+      // Validate status transition
+      if (!this.isValidStatusTransition(existingInvoice.status, status)) {
+        throw new FluxionError(
+          ErrorCodes.VALIDATION_ERROR, 
+          `Cannot change status from ${existingInvoice.status} to ${status}`,
+          400
+        );
+      }
+
+      // Prepare status update
+      const updates: Partial<Invoice> = { status };
+      
+      // Set sentAt timestamp when marking as sent
+      if (status === 'sent' && existingInvoice.status === 'draft') {
+        updates.sentAt = new Date();
+      }
+
+      // Update the invoice
+      const updatedInvoice = await this.invoiceRepository.update(
+        tenantContext,
+        invoiceId,
         updates
       );
 
-      const updatedInvoice = await this.findById(invoiceId);
-
-      this.logger.info('Invoice updated successfully', { 
-        invoice_id: invoiceId 
+      this.logger.info('Invoice status updated successfully', { 
+        invoiceId,
+        oldStatus: existingInvoice.status,
+        newStatus: status,
+        tenantId: tenantContext.tenantId
       });
 
-      // Send notification if status changed to pending
-      if (data.status === 'pending' && existingInvoice.status !== 'pending') {
-        await this.notifications.sendInvoiceCreated(updatedInvoice);
-      }
-
       return updatedInvoice;
-    } catch (error) {
-      this.logger.error('Failed to update invoice', { error, invoiceId });
+    } catch (error: any) {
+      this.logger.error('Failed to update invoice status', { 
+        error: error.message,
+        invoiceId,
+        newStatus: status,
+        tenantId: tenantContext.tenantId
+      });
       throw error;
     }
   }
@@ -353,276 +480,768 @@ export class InvoiceService {
    * Mark invoice as paid
    */
   async markAsPaid(
+    tenantContext: TenantContext,
     invoiceId: string, 
-    paymentTxHash: string,
-    paidAmount: number
+    paymentAmount: string
   ): Promise<Invoice> {
     this.logger.info('Marking invoice as paid', { 
-      invoice_id: invoiceId,
-      tx_hash: paymentTxHash,
-      amount: paidAmount 
+      invoiceId,
+      amount: paymentAmount,
+      tenantId: tenantContext.tenantId
     });
 
-    const now = new Date().toISOString();
-
-    const updates: Partial<InvoiceEntity> = {
-      GSI2PK: 'STATUS#paid',
-      GSI2SK: now,
-      updated_at: now
-    };
-
-    // Update invoice data
-    const existingInvoice = await this.findById(invoiceId);
-    updates.data = {
-      ...existingInvoice,
-      status: 'paid',
-      paid_at: now,
-      payment_tx_hash: paymentTxHash,
-      amount: paidAmount // Update with actual paid amount
-    };
-
     try {
-      await this.db.update(`INV#${invoiceId}`, 'METADATA', updates);
+      const invoice = await this.invoiceRepository.findById(tenantContext, invoiceId);
+      
+      if (!invoice) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'Invoice not found', 404);
+      }
 
-      const updatedInvoice = await this.findById(invoiceId);
+      // Add payment to invoice
+      invoice.addPayment(paymentAmount);
+      
+      const updatedInvoice = await this.invoiceRepository.update(
+        tenantContext,
+        invoiceId,
+        {
+          status: invoice.status,
+          amountPaid: invoice.amountPaid,
+          paidAt: invoice.paidAt
+        }
+      );
 
       this.logger.info('Invoice marked as paid', { 
-        invoice_id: invoiceId,
-        tx_hash: paymentTxHash 
+        invoiceId,
+        status: updatedInvoice.status,
+        tenantId: tenantContext.tenantId
       });
 
       return updatedInvoice;
-    } catch (error) {
-      this.logger.error('Failed to mark invoice as paid', { error, invoiceId });
+    } catch (error: any) {
+      this.logger.error('Failed to mark invoice as paid', { 
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
       throw error;
     }
   }
 
   /**
-   * Delete an invoice (soft delete by changing status)
+   * Cancel an invoice (using status update)
    */
-  async delete(invoiceId: string, walletAddress: string): Promise<void> {
-    this.logger.info('Deleting invoice', { 
-      invoice_id: invoiceId,
-      wallet_address: walletAddress 
+  async cancel(tenantContext: TenantContext, invoiceId: string): Promise<void> {
+    this.logger.info('Cancelling invoice', { 
+      invoiceId,
+      tenantId: tenantContext.tenantId
     });
 
-    // Check permissions
-    await this.findById(invoiceId, walletAddress);
-
-    await this.update(invoiceId, { status: 'cancelled' }, walletAddress);
-
-    this.logger.info('Invoice deleted (cancelled)', { invoice_id: invoiceId });
+    try {
+      await this.updateInvoiceStatus(tenantContext, invoiceId, 'cancelled');
+      
+      this.logger.info('Invoice cancelled', { 
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+    } catch (error: any) {
+      this.logger.error('Failed to cancel invoice', { 
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
   }
 
   /**
-   * Get invoice by ID for public access (without wallet authentication)
+   * Generate shareable link for invoice payment
    */
-  async findPublicById(invoiceId: string): Promise<Invoice> {
-    this.logger.info('Finding invoice by ID (public)', { invoice_id: invoiceId });
+  generateShareableLink(invoiceId: string): string {
+    const frontendUrl = config.frontend.url;
+    return `${frontendUrl}/invoice/${invoiceId}`;
+  }
 
-    const entity = await this.db.findById(`INV#${invoiceId}`, 'METADATA');
-    
-    if (!entity || entity.entityType !== 'INVOICE') {
-      throw createNotFoundError('Invoice', invoiceId);
-    }
-
-    const invoiceEntity = entity as InvoiceEntity;
-
-    const invoice: Invoice = {
-      invoice_id: invoiceEntity.data.invoice_id,
-      creator_wallet: invoiceEntity.data.creator_wallet,
-      client_email: invoiceEntity.data.client_email,
-      client_name: invoiceEntity.data.client_name,
-      amount: invoiceEntity.data.amount,
-      description: invoiceEntity.data.description,
-      line_items: invoiceEntity.data.line_items,
-      status: invoiceEntity.data.status,
-      due_date: invoiceEntity.data.due_date,
-      paid_at: invoiceEntity.data.paid_at,
-      payment_tx_hash: invoiceEntity.data.payment_tx_hash,
-      payment_url: invoiceEntity.data.payment_url,
-      pdf_url: invoiceEntity.data.pdf_url,
-      created_at: invoiceEntity.created_at,
-      updated_at: invoiceEntity.updated_at
+  /**
+   * Validate if a status transition is allowed
+   */
+  private isValidStatusTransition(currentStatus: InvoiceStatus, newStatus: InvoiceStatus): boolean {
+    const validTransitions: Record<InvoiceStatus, InvoiceStatus[]> = {
+      'draft': ['sent', 'cancelled'],
+      'sent': ['paid', 'overdue', 'cancelled', 'partial'],
+      'paid': [], // No transitions from paid
+      'overdue': ['paid', 'cancelled', 'partial'],
+      'cancelled': [], // No transitions from cancelled
+      'partial': ['paid', 'overdue', 'cancelled']
     };
 
-    this.logger.info('Invoice found (public)', { 
-      invoice_id: invoiceId,
-      status: invoice.status 
-    });
-
-    return invoice;
+    return validTransitions[currentStatus]?.includes(newStatus) ?? false;
   }
 
-  /**
-   * Cancel an invoice
-   */
-  async cancel(invoiceId: string, walletAddress: string): Promise<Invoice> {
-    this.logger.info('Cancelling invoice', { 
-      invoice_id: invoiceId,
-      wallet_address: walletAddress 
-    });
-
-    const invoice = await this.findById(invoiceId, walletAddress);
-    
-    // Don't allow cancellation of paid invoices
-    if (invoice.status === 'paid') {
-      throw createValidationError('Cannot cancel paid invoices');
-    }
-
-    if (invoice.status === 'cancelled') {
-      throw createValidationError('Invoice is already cancelled');
-    }
-
-    return await this.update(invoiceId, { status: 'cancelled' }, walletAddress);
-  }
 
   /**
-   * Send an invoice (mark as pending and send notification)
+   * Send an invoice (mark as sent)
    */
-  async send(invoiceId: string, walletAddress: string): Promise<Invoice> {
+  async send(tenantContext: TenantContext, invoiceId: string, userId: string): Promise<Invoice> {
     this.logger.info('Sending invoice', { 
-      invoice_id: invoiceId,
-      wallet_address: walletAddress 
+      invoiceId,
+      userId,
+      tenantId: tenantContext.tenantId
     });
 
-    const invoice = await this.findById(invoiceId, walletAddress);
-    
-    // Only allow sending of draft invoices
-    if (invoice.status !== 'draft') {
-      throw createValidationError('Only draft invoices can be sent');
+    try {
+      const invoice = await this.invoiceRepository.findById(tenantContext, invoiceId);
+      
+      if (!invoice) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'Invoice not found', 404);
+      }
+
+      // Check permissions
+      if (invoice.createdBy !== userId) {
+        throw new FluxionError(ErrorCodes.FORBIDDEN, 'You do not have permission to send this invoice', 403);
+      }
+      
+      // Only allow sending of draft invoices
+      if (invoice.status !== 'draft') {
+        throw new FluxionError(ErrorCodes.VALIDATION_ERROR, 'Only draft invoices can be sent', 400);
+      }
+
+      // Update invoice status to sent
+      invoice.markAsSent();
+      const updatedInvoice = await this.invoiceRepository.update(
+        tenantContext,
+        invoiceId,
+        {
+          status: invoice.status,
+          sentAt: invoice.sentAt
+        }
+      );
+
+      this.logger.info('Invoice sent successfully', { 
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      
+      return updatedInvoice;
+    } catch (error: any) {
+      this.logger.error('Failed to send invoice', { 
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
     }
-
-    const updatedInvoice = await this.update(invoiceId, { status: 'pending' }, walletAddress);
-    
-    // Send notification
-    await this.notifications.sendInvoiceCreated(updatedInvoice);
-
-    this.logger.info('Invoice sent successfully', { invoice_id: invoiceId });
-    
-    return updatedInvoice;
   }
 
   /**
-   * Get dashboard statistics for a user
+   * Get dashboard statistics for organization
    */
-  async getDashboardStats(walletAddress: string): Promise<{
-    total_invoices: number;
-    total_amount: number;
-    total_paid: number;
-    pending_amount: number;
-    recent_invoices: Invoice[];
-  }> {
-    this.logger.info('Getting dashboard stats', { wallet_address: walletAddress });
-
-    // Get all user invoices
-    const result = await this.db.queryGSI1(`USER#${walletAddress}`, {
-      limit: 100,
-      scanIndexForward: false
+  async getDashboardStats(tenantContext: TenantContext): Promise<InvoiceStatsResponse> {
+    this.logger.info('Getting dashboard stats', { 
+      tenantId: tenantContext.tenantId
     });
 
-    const invoices = result.items
-      .filter(item => item.entityType === 'INVOICE')
-      .map(item => {
-        const invoiceEntity = item as InvoiceEntity;
-        return {
-          invoice_id: invoiceEntity.data.invoice_id,
-          creator_wallet: invoiceEntity.data.creator_wallet,
-          client_email: invoiceEntity.data.client_email,
-          client_name: invoiceEntity.data.client_name,
-          amount: invoiceEntity.data.amount,
-          description: invoiceEntity.data.description,
-          line_items: invoiceEntity.data.line_items,
-          status: invoiceEntity.data.status,
-          due_date: invoiceEntity.data.due_date,
-          paid_at: invoiceEntity.data.paid_at,
-          payment_tx_hash: invoiceEntity.data.payment_tx_hash,
-          payment_url: invoiceEntity.data.payment_url,
-          pdf_url: invoiceEntity.data.pdf_url,
-          created_at: invoiceEntity.created_at,
-          updated_at: invoiceEntity.updated_at
-        };
+    try {
+      const stats = await this.invoiceRepository.getInvoiceStats(tenantContext);
+
+      this.logger.info('Dashboard stats retrieved', { 
+        total: stats.total,
+        tenantId: tenantContext.tenantId
       });
 
-    const totalInvoices = invoices.length;
-    const totalAmount = invoices.reduce((sum, inv) => sum + inv.amount, 0);
-    const totalPaid = invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.amount, 0);
-    const pendingAmount = invoices.filter(inv => inv.status === 'pending').reduce((sum, inv) => sum + inv.amount, 0);
-    const recentInvoices = invoices.slice(0, 5);
-
-    const stats = {
-      total_invoices: totalInvoices,
-      total_amount: totalAmount,
-      total_paid: totalPaid,
-      pending_amount: pendingAmount,
-      recent_invoices: recentInvoices
-    };
-
-    this.logger.info('Dashboard stats retrieved', { 
-      wallet_address: walletAddress,
-      total_invoices: totalInvoices 
-    });
-
-    return stats;
+      return {
+        total: stats.total,
+        byStatus: stats.byStatus,
+        totalAmount: stats.totalAmount,
+        totalPaidAmount: stats.totalPaidAmount,
+        overdue: stats.overdue,
+        dueSoon: stats.dueSoon
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get dashboard stats', { 
+        error: error.message,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
   }
 
   /**
-   * Get invoice status
+   * Get invoice status (public)
    */
-  async getStatus(invoiceId: string): Promise<{ status: string; last_updated: string }> {
-    this.logger.info('Getting invoice status', { invoice_id: invoiceId });
+  async getStatus(invoiceId: string): Promise<{ status: string; last_updated: Date }> {
+    this.logger.info('Getting invoice status', { invoiceId });
 
-    const invoice = await this.findPublicById(invoiceId);
-    
-    return {
-      status: invoice.status,
-      last_updated: invoice.updated_at
-    };
+    try {
+      const invoice = await this.getPublicInvoice(invoiceId);
+      
+      return {
+        status: invoice.status,
+        last_updated: invoice.updatedAt
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get invoice status', { 
+        error: error.message,
+        invoiceId
+      });
+      throw error;
+    }
   }
 
   /**
-   * Get invoices that need reminders
+   * Get overdue invoices for organization
    */
-  async getOverdueInvoices(): Promise<Invoice[]> {
-    const now = new Date();
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
-
-    this.logger.info('Finding overdue invoices');
-
-    const result = await this.db.queryGSI2('STATUS#pending', {
-      GSI2SK: threeDaysAgo,
-      sortKeyCondition: '<',
-      limit: 50,
-      scanIndexForward: true
+  async getOverdueInvoices(tenantContext: TenantContext): Promise<Invoice[]> {
+    this.logger.info('Finding overdue invoices', {
+      tenantId: tenantContext.tenantId
     });
 
-    const overdueInvoices = result.items
-      .filter(item => item.entityType === 'INVOICE')
-      .map(item => {
-        const invoiceEntity = item as InvoiceEntity;
+    try {
+      const overdueInvoices = await this.invoiceRepository.findOverdueInvoices(tenantContext);
+
+      this.logger.info('Overdue invoices found', { 
+        count: overdueInvoices.length,
+        tenantId: tenantContext.tenantId
+      });
+
+      return overdueInvoices;
+    } catch (error: any) {
+      this.logger.error('Failed to get overdue invoices', { 
+        error: error.message,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate client access token for invoice viewing
+   */
+  async generateClientAccessToken(
+    tenantContext: TenantContext,
+    invoiceId: string,
+    expiresIn: number = 72
+  ): Promise<{
+    accessToken: string;
+    publicUrl: string;
+    expiresAt: string;
+  }> {
+    this.logger.info('Generating client access token', {
+      invoiceId,
+      expiresIn,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      // Import access token repository
+      const { InvoiceAccessTokenRepository } = await import('@/database/repositories/InvoiceAccessTokenRepository');
+      const accessTokenRepository = new InvoiceAccessTokenRepository();
+
+      // Calculate expiration time
+      const expiresAt = new Date(Date.now() + expiresIn * 60 * 60 * 1000);
+
+      // Create access token record
+      const tokenRecord = await accessTokenRepository.create(tenantContext, {
+        invoiceId,
+        expiresAt
+      });
+
+      const publicUrl = `${process.env.FRONTEND_URL || 'https://fluxion.app'}/invoice/${tokenRecord.token}`;
+
+      this.logger.info('Client access token generated successfully', {
+        invoiceId,
+        tokenId: tokenRecord.id,
+        expiresAt: expiresAt.toISOString(),
+        tenantId: tenantContext.tenantId
+      });
+
+      return {
+        accessToken: tokenRecord.token,
+        publicUrl,
+        expiresAt: expiresAt.toISOString()
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to generate client access token', {
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate QR code data for invoice payment
+   */
+  async generateQRCodeData(
+    tenantContext: TenantContext,
+    invoiceId: string
+  ): Promise<{
+    qrData: string;
+    paymentUrl: string;
+    walletDeepLink: string;
+  }> {
+    this.logger.info('Generating QR code data', {
+      invoiceId,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      const invoice = await this.getInvoiceById(tenantContext, invoiceId);
+
+      if (!invoice.network || !invoice.token) {
+        throw new FluxionError(
+          ErrorCodes.VALIDATION_ERROR,
+          'Invoice network or token information is missing',
+          400
+        );
+      }
+
+      // Calculate token amount (adjust for token decimals)
+      const tokenAmount = (parseFloat(invoice.amount.toString()) * Math.pow(10, invoice.token.decimals)).toString();
+
+      // EIP-681 format for payment requests
+      const chainId = invoice.network.chainId;
+      const tokenAddress = invoice.token.contractAddress;
+      const recipientAddress = invoice.recipientWallet || process.env.DEFAULT_PAYMENT_WALLET;
+
+      if (!recipientAddress) {
+        throw new FluxionError(
+          ErrorCodes.CONFIGURATION_ERROR,
+          'Payment recipient address not configured',
+          500
+        );
+      }
+
+      // Generate different formats based on token type
+      let qrData: string;
+      if (invoice.token.isNative) {
+        // Native token transfer
+        qrData = `ethereum:${recipientAddress}@${chainId}?value=${tokenAmount}`;
+      } else {
+        // ERC-20 token transfer
+        qrData = `ethereum:${tokenAddress}@${chainId}/transfer?address=${recipientAddress}&uint256=${tokenAmount}`;
+      }
+
+      const paymentUrl = `${process.env.FRONTEND_URL || 'https://fluxion.app'}/invoice/${invoice.id}`;
+      const walletDeepLink = `metamask://send?to=${recipientAddress}&value=${tokenAmount}&chainId=${chainId}`;
+
+      this.logger.info('QR code data generated successfully', {
+        invoiceId,
+        chainId,
+        tokenSymbol: invoice.token.symbol,
+        tenantId: tenantContext.tenantId
+      });
+
+      return {
+        qrData,
+        paymentUrl,
+        walletDeepLink
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to generate QR code data', {
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Send invoice email to client
+   */
+  async sendInvoiceEmail(
+    tenantContext: TenantContext,
+    invoiceId: string,
+    customMessage?: string,
+    sendCopy: boolean = false
+  ): Promise<{
+    message: string;
+    sentAt: string;
+    recipient: string;
+  }> {
+    this.logger.info('Sending invoice email', {
+      invoiceId,
+      sendCopy,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      const invoice = await this.getInvoiceById(tenantContext, invoiceId);
+
+      if (invoice.status === 'paid') {
+        throw new FluxionError(
+          ErrorCodes.VALIDATION_ERROR,
+          'Cannot send email for paid invoices',
+          400
+        );
+      }
+
+      // Import notification service
+      const { NotificationService } = await import('@/modules/notifications/service');
+      const notificationService = new NotificationService();
+
+      // Send notification to client
+      const notificationId = await notificationService.sendInvoiceNotification(
+        tenantContext,
+        invoiceId,
+        'invoice_sent',
+        customMessage
+      );
+
+      // If sendCopy is true, also send to creator
+      if (sendCopy) {
+        const { UserService } = await import('@/modules/users/service');
+        const userService = new UserService();
+        const creator = await userService.getUserByWallet(tenantContext, invoice.createdBy);
+
+        if (creator.email) {
+          await notificationService.sendNotification(tenantContext, {
+            type: 'invoice_sent',
+            recipientEmail: creator.email,
+            templateData: {
+              invoiceId: invoice.id,
+              clientName: invoice.clientName,
+              amount: invoice.amount.toString(),
+              customMessage: 'Copy of invoice sent to client'
+            }
+          });
+        }
+      }
+
+      // Update invoice status to sent if it was draft
+      if (invoice.status === 'draft') {
+        await this.updateInvoiceStatus(tenantContext, invoiceId, 'sent');
+      }
+
+      const sentAt = new Date().toISOString();
+
+      this.logger.info('Invoice email sent successfully', {
+        invoiceId,
+        notificationId,
+        recipient: invoice.clientEmail,
+        tenantId: tenantContext.tenantId
+      });
+
+      return {
+        message: 'Invoice email sent successfully',
+        sentAt,
+        recipient: invoice.clientEmail
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to send invoice email', {
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get payment status for invoice
+   */
+  async getPaymentStatus(invoiceId: string): Promise<{
+    invoiceStatus: InvoiceStatus;
+    payments: any[];
+    totalPaid: string;
+    remainingAmount: string;
+  }> {
+    this.logger.info('Getting payment status', { invoiceId });
+
+    try {
+      // Find invoice without tenant context for public access
+      const invoice = await this.invoiceRepository.findByIdWithoutTenant(invoiceId);
+      
+      if (!invoice) {
+        throw new FluxionError(
+          ErrorCodes.NOT_FOUND,
+          'Invoice not found',
+          404
+        );
+      }
+
+      // Import payment repository
+      const { PaymentRepository } = await import('@/database/repositories/PaymentRepository');
+      const paymentRepository = new PaymentRepository();
+
+      // Get all payments for this invoice
+      const payments = await paymentRepository.findByInvoiceId(invoiceId);
+
+      // Calculate totals
+      const totalPaid = payments
+        .filter(p => p.status === 'confirmed')
+        .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0);
+
+      const invoiceAmount = parseFloat(invoice.amount.toString());
+      const remainingAmount = Math.max(0, invoiceAmount - totalPaid);
+
+      this.logger.info('Payment status retrieved successfully', {
+        invoiceId,
+        totalPaid,
+        remainingAmount,
+        paymentsCount: payments.length
+      });
+
+      return {
+        invoiceStatus: invoice.status,
+        payments: payments.map(p => ({
+          paymentId: p.id,
+          txHash: p.txHash,
+          status: p.status,
+          amount: p.amount.toString(),
+          verifiedAt: p.verifiedAt
+        })),
+        totalPaid: totalPaid.toFixed(2),
+        remainingAmount: remainingAmount.toFixed(2)
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get payment status', {
+        error: error.message,
+        invoiceId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Trigger manual payment verification
+   */
+  async triggerPaymentVerification(
+    tenantContext: TenantContext,
+    invoiceId: string
+  ): Promise<{
+    message: string;
+    verificationsStarted: number;
+  }> {
+    this.logger.info('Triggering payment verification', {
+      invoiceId,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      // Import payment repository to find pending payments
+      const { PaymentRepository } = await import('@/database/repositories/PaymentRepository');
+      const paymentRepository = new PaymentRepository();
+
+      const pendingPayments = await paymentRepository.findPendingByInvoiceId(
+        tenantContext,
+        invoiceId
+      );
+
+      if (pendingPayments.length === 0) {
         return {
-          invoice_id: invoiceEntity.data.invoice_id,
-          creator_wallet: invoiceEntity.data.creator_wallet,
-          client_email: invoiceEntity.data.client_email,
-          client_name: invoiceEntity.data.client_name,
-          amount: invoiceEntity.data.amount,
-          description: invoiceEntity.data.description,
-          line_items: invoiceEntity.data.line_items,
-          status: invoiceEntity.data.status,
-          due_date: invoiceEntity.data.due_date,
-          paid_at: invoiceEntity.data.paid_at,
-          payment_tx_hash: invoiceEntity.data.payment_tx_hash,
-          payment_url: invoiceEntity.data.payment_url,
-          pdf_url: invoiceEntity.data.pdf_url,
-          created_at: invoiceEntity.created_at,
-          updated_at: invoiceEntity.updated_at
+          message: 'No pending payments found for verification',
+          verificationsStarted: 0
         };
-      })
-      .filter(invoice => new Date(invoice.due_date) < now);
+      }
 
-    this.logger.info('Overdue invoices found', { count: overdueInvoices.length });
+      // Import background job service to trigger verification
+      const { BackgroundJobService } = await import('@/modules/jobs/service');
+      const jobService = new BackgroundJobService();
 
-    return overdueInvoices;
+      // Trigger verification for each pending payment
+      const verificationPromises = pendingPayments.map(payment =>
+        jobService.triggerJob(tenantContext, 'payment_verification', {
+          paymentId: payment.id,
+          priority: 'high'
+        })
+      );
+
+      await Promise.all(verificationPromises);
+
+      this.logger.info('Payment verification triggered successfully', {
+        invoiceId,
+        verificationsStarted: pendingPayments.length,
+        tenantId: tenantContext.tenantId
+      });
+
+      return {
+        message: 'Payment verification triggered',
+        verificationsStarted: pendingPayments.length
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to trigger payment verification', {
+        error: error.message,
+        invoiceId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoice by access token (public method)
+   */
+  async getInvoiceByAccessToken(accessToken: string): Promise<any> {
+    this.logger.info('Getting invoice by access token', { accessToken });
+
+    try {
+      // Import access token repository
+      const { InvoiceAccessTokenRepository } = await import('@/database/repositories/InvoiceAccessTokenRepository');
+      const accessTokenRepository = new InvoiceAccessTokenRepository();
+
+      // Find token record
+      const tokenRecord = await accessTokenRepository.findByToken(accessToken);
+      
+      if (!tokenRecord) {
+        throw new FluxionError(
+          ErrorCodes.NOT_FOUND,
+          'Invalid or expired access token',
+          404
+        );
+      }
+
+      // Check if token is expired
+      if (tokenRecord.expiresAt < new Date()) {
+        throw new FluxionError(
+          ErrorCodes.VALIDATION_ERROR,
+          'Access token has expired',
+          400
+        );
+      }
+
+      // Get invoice data
+      const invoice = await this.invoiceRepository.findByIdWithoutTenant(tokenRecord.invoiceId);
+      
+      if (!invoice) {
+        throw new FluxionError(
+          ErrorCodes.NOT_FOUND,
+          'Invoice not found',
+          404
+        );
+      }
+
+      // Return public invoice data with payment info
+      const qrCodeData = await this.generateQRCodeData(
+        { tenantId: invoice.organizationId, userId: '' },
+        invoice.id
+      );
+
+      this.logger.info('Invoice retrieved by access token successfully', {
+        invoiceId: invoice.id,
+        accessToken
+      });
+
+      return {
+        id: invoice.id,
+        title: invoice.title,
+        description: invoice.description,
+        amount: invoice.amount.toString(),
+        dueDate: invoice.dueDate,
+        clientName: invoice.clientName,
+        clientEmail: invoice.clientEmail,
+        status: invoice.status,
+        network: invoice.network,
+        token: invoice.token,
+        paymentAddress: invoice.recipientWallet || process.env.DEFAULT_PAYMENT_WALLET,
+        qrCodeData: qrCodeData.qrData,
+        createdAt: invoice.createdAt,
+        updatedAt: invoice.updatedAt
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get invoice by access token', {
+        error: error.message,
+        accessToken
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get public payment info for invoice
+   */
+  async getPublicPaymentInfo(invoiceId: string): Promise<any> {
+    this.logger.info('Getting public payment info', { invoiceId });
+
+    try {
+      const invoice = await this.invoiceRepository.findByIdWithoutTenant(invoiceId);
+      
+      if (!invoice) {
+        throw new FluxionError(
+          ErrorCodes.NOT_FOUND,
+          'Invoice not found',
+          404
+        );
+      }
+
+      if (invoice.status === 'paid') {
+        throw new FluxionError(
+          ErrorCodes.VALIDATION_ERROR,
+          'Invoice has already been paid',
+          400
+        );
+      }
+
+      // Generate payment data
+      const qrCodeData = await this.generateQRCodeData(
+        { tenantId: invoice.organizationId, userId: '' },
+        invoice.id
+      );
+
+      // Calculate token amount
+      const tokenAmount = (parseFloat(invoice.amount.toString()) * Math.pow(10, invoice.token.decimals)).toString();
+
+      this.logger.info('Public payment info retrieved successfully', {
+        invoiceId,
+        networkId: invoice.network?.id,
+        tokenId: invoice.token?.id
+      });
+
+      return {
+        invoiceId: invoice.id,
+        amount: invoice.amount.toString(),
+        paymentAddress: invoice.recipientWallet || process.env.DEFAULT_PAYMENT_WALLET,
+        network: {
+          chainId: invoice.network?.chainId,
+          name: invoice.network?.name,
+          rpcUrl: invoice.network?.rpcUrl
+        },
+        token: {
+          contractAddress: invoice.token?.contractAddress,
+          symbol: invoice.token?.symbol,
+          decimals: invoice.token?.decimals
+        },
+        qrCodeData: qrCodeData.qrData,
+        walletConnectData: {
+          to: invoice.token?.contractAddress || invoice.recipientWallet,
+          value: invoice.token?.isNative ? tokenAmount : '0',
+          data: invoice.token?.isNative ? '0x' : `0xa9059cbb000000000000000000000000${(invoice.recipientWallet || '').slice(2)}${tokenAmount.padStart(64, '0')}`
+        },
+        estimatedGas: invoice.token?.isNative ? '21000' : '65000'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get public payment info', {
+        error: error.message,
+        invoiceId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoices due soon (within 7 days)
+   */
+  async getDueSoonInvoices(tenantContext: TenantContext): Promise<Invoice[]> {
+    this.logger.info('Getting invoices due soon', {
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      const dueSoonInvoices = await this.invoiceRepository.findDueSoonInvoices(tenantContext);
+
+      this.logger.info('Due soon invoices found', {
+        count: dueSoonInvoices.length,
+        tenantId: tenantContext.tenantId
+      });
+
+      return dueSoonInvoices;
+    } catch (error: any) {
+      this.logger.error('Failed to get due soon invoices', {
+        error: error.message,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
   }
 }

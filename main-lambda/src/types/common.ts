@@ -67,6 +67,11 @@ export interface UserRecord extends BaseRecord {
     total_received: number;
     last_active_at: string;
   };
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 }
 
 export interface InvoiceRecord extends BaseRecord {
@@ -203,6 +208,7 @@ export interface TenantContext {
 export interface QueryOptions {
   limit?: number;
   nextToken?: string;
+  sortField?: string;
   sortDirection?: 'asc' | 'desc';
 }
 

@@ -1,0 +1,100 @@
+<h2>❌ Payment Verification Failed</h2>
+
+<p>We encountered an issue while processing a payment for your invoice. Please review the details below.</p>
+
+<div class="urgent-box">
+    <p style="font-size: 18px; margin: 0; color: #ef4444;"><strong>⚠️ Payment Not Confirmed</strong></p>
+    <p style="margin: 10px 0 0 0;">The payment transaction could not be verified or completed successfully.</p>
+</div>
+
+<div class="highlight-box">
+    <table class="info-table" style="margin: 0;">
+        <tr>
+            <th width="40%">Invoice Number</th>
+            <td><strong>{{invoiceNumber}}</strong></td>
+        </tr>
+        <tr>
+            <th>Expected Amount</th>
+            <td><span class="amount">{{amount}} {{currency}}</span></td>
+        </tr>
+        <tr>
+            <th>Client</th>
+            <td>{{clientName}}</td>
+        </tr>
+        <tr>
+            <th>Network</th>
+            <td>{{networkName}}</td>
+        </tr>
+        {{#if transactionHash}}
+        <tr>
+            <th>Transaction Hash</th>
+            <td>
+                <div class="transaction-hash">{{transactionHash}}</div>
+            </td>
+        </tr>
+        {{/if}}
+        <tr>
+            <th>Error Reason</th>
+            <td><strong style="color: #ef4444;">{{errorReason}}</strong></td>
+        </tr>
+    </table>
+</div>
+
+<p><strong>Common Payment Issues:</strong></p>
+<ul>
+    <li><strong>Insufficient Amount:</strong> The payment amount was less than required</li>
+    <li><strong>Wrong Network:</strong> Payment sent on incorrect blockchain network</li>
+    <li><strong>Wrong Token:</strong> Payment sent in incorrect cryptocurrency</li>
+    <li><strong>Transaction Failed:</strong> Blockchain transaction was reverted</li>
+    <li><strong>Network Congestion:</strong> Transaction failed due to network issues</li>
+</ul>
+
+<div class="text-center mt-20 mb-20">
+    <a href="{{paymentUrl}}" class="cta-button">🔄 Retry Payment</a>
+</div>
+
+<p><strong>Next Steps:</strong></p>
+<ol>
+    <li><strong>Contact Your Client:</strong> Inform them about the payment issue</li>
+    <li><strong>Verify Requirements:</strong> Ensure they understand the payment requirements</li>
+    <li><strong>Provide Support:</strong> Share the payment link and instructions</li>
+    <li><strong>Monitor Status:</strong> Check your dashboard for payment updates</li>
+</ol>
+
+<div class="highlight-box">
+    <p><strong>💡 Help Your Client Succeed</strong></p>
+    <p>Share these resources with your client to ensure successful payment:</p>
+    <ul>
+        <li><a href="https://fluxion.pay/help/payments">Payment Guide</a> - Step-by-step instructions</li>
+        <li><a href="https://fluxion.pay/help/wallets">Wallet Setup</a> - How to set up a crypto wallet</li>
+        <li><a href="https://fluxion.pay/help/networks">Network Guide</a> - Understanding blockchain networks</li>
+    </ul>
+</div>
+
+{{#if transactionHash}}
+<div class="text-center mt-20">
+    <a href="{{transactionUrl}}" class="secondary-button">🔍 View Transaction Details</a>
+</div>
+{{/if}}
+
+<div class="text-center mt-20">
+    <a href="https://fluxion.pay/dashboard" class="secondary-button">📊 View Dashboard</a>
+    <a href="mailto:{{supportEmail}}?subject=Payment Failed - Invoice {{invoiceNumber}}" class="secondary-button">📧 Contact Support</a>
+</div>
+
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+<p style="font-size: 14px; color: #6b7280;">
+    {{#if paymentId}}
+    <strong>Payment ID:</strong> {{paymentId}}<br>
+    {{/if}}
+    <strong>Invoice ID:</strong> {{invoiceId}}<br>
+    <strong>Organization:</strong> {{organizationName}}<br>
+    <strong>Support:</strong> {{supportEmail}}
+</p>
+
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+    <strong>Note:</strong> Payment failures are common with cryptocurrency transactions. 
+    Most issues can be resolved by retrying the payment with correct parameters. 
+    If the problem persists, our support team can help investigate the specific transaction.
+</p>

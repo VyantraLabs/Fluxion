@@ -1,12 +1,14 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   CreateDateColumn,
   Index,
   JoinColumn,
+  BeforeInsert,
 } from 'typeorm';
+import { ulid } from 'ulid';
 import { Organization } from './Organization';
 import { User } from './User';
 
@@ -21,20 +23,20 @@ export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 
 @Index(['createdAt'])
 @Index(['ipAddress'])
 export class AuditLog {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'varchar' })
   id!: string;
 
-  @Column({ name: 'organization_id', type: 'uuid', nullable: false })
+  @Column({ name: 'organization_id', type: 'varchar', nullable: false })
   organizationId!: string;
 
-  @Column({ name: 'user_id', type: 'uuid', nullable: true })
+  @Column({ name: 'user_id', type: 'varchar', nullable: true })
   userId?: string;
 
   // Audit details
   @Column({ name: 'table_name', type: 'varchar', length: 100, nullable: false })
   tableName!: string;
 
-  @Column({ name: 'record_id', type: 'uuid', nullable: false })
+  @Column({ name: 'record_id', type: 'varchar', nullable: false })
   recordId!: string;
 
   @Column({ type: 'varchar', length: 20, nullable: false })
@@ -317,5 +319,12 @@ export class AuditLog {
 
   static getTableActivityQuery(tableName: string) {
     return { where: { tableName } }!;
+  }
+
+  @BeforeInsert()
+  generateId(): void {
+    if (!this.id) {
+      this.id = ulid();
+    }
   }
 }

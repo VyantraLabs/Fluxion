@@ -27,7 +27,7 @@ import {
 } from '@/utils/web3';
 import { config } from '@/utils/config';
 import { walletStorage } from '@/utils/storage';
-import { useConfig, useDefaultNetwork, useIsNetworkSupported } from './ConfigContext';
+import { useConfig, useDefaultNetwork } from './ConfigContext';
 import toast from 'react-hot-toast';
 
 // Initial state
@@ -88,9 +88,8 @@ const Web3Context = createContext<{
 // Provider component
 export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(web3Reducer, initialState);
-  const { config: dynamicConfig } = useConfig();
+  const { config: dynamicConfig, isNetworkSupported } = useConfig();
   const defaultNetwork = useDefaultNetwork();
-  const isNetworkSupported = useIsNetworkSupported;
 
   // Initialize wallet connection on page load
   useEffect(() => {

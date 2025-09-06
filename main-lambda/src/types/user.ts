@@ -17,6 +17,12 @@ export const UpdateUserProfileSchema = z.object({
   }).optional()
 });
 
+export const CompleteOnboardingSchema = z.object({
+  organizationName: z.string().min(2, 'Organization name must be at least 2 characters').max(100, 'Organization name too long'),
+  displayName: z.string().min(1, 'Display name is required').max(50).optional(),
+  email: z.string().email('Invalid email address').optional()
+});
+
 export const GetUserStatsQuerySchema = z.object({
   wallet_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid wallet address')
 });
@@ -32,9 +38,11 @@ export interface UserEntity extends FluxionRecord {
 
 export type AuthenticateWalletDTO = z.infer<typeof AuthenticateWalletSchema>;
 export type UpdateUserProfileDTO = z.infer<typeof UpdateUserProfileSchema>;
+export type CompleteOnboardingDTO = z.infer<typeof CompleteOnboardingSchema>;
 export type GetUserStatsQuery = z.infer<typeof GetUserStatsQuerySchema>;
 
 export interface User {
+  id?: string; // Database user ID
   wallet_address: string;
   email?: string;
   display_name?: string;
@@ -56,10 +64,19 @@ export interface AuthResponse {
   token: string;
   user: User;
   expires_at: string;
+  needsOnboarding: boolean;
+  isNewUser?: boolean; // Flag to indicate if this is a first-time user
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 }
 
 export interface JWTPayload {
   wallet_address: string;
+  user_id?: string;
+  tenant_id?: string;
   iat: number;
   exp: number;
 }

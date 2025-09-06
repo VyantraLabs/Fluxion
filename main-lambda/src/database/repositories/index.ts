@@ -8,6 +8,11 @@ import { TokenRepository } from './TokenRepository';
 import { SmartContractRepository } from './SmartContractRepository';
 import { OrganizationSettingRepository } from './OrganizationSettingRepository';
 import { AuditLogRepository } from './AuditLogRepository';
+import { InvoiceTemplateRepository } from './InvoiceTemplateRepository';
+import { InvoiceAccessTokenRepository } from './InvoiceAccessTokenRepository';
+import { NotificationQueueRepository } from './NotificationQueueRepository';
+import { NotificationSettingsRepository } from './NotificationSettingsRepository';
+import { PaymentVerificationJobRepository } from './PaymentVerificationJobRepository';
 import { Logger } from '@/shared/utils/logger';
 
 /**
@@ -29,6 +34,11 @@ class RepositoryManager {
   private _smartContractRepository?: SmartContractRepository;
   private _organizationSettingRepository?: OrganizationSettingRepository;
   private _auditLogRepository?: AuditLogRepository;
+  private _invoiceTemplateRepository?: InvoiceTemplateRepository;
+  private _invoiceAccessTokenRepository?: InvoiceAccessTokenRepository;
+  private _notificationQueueRepository?: NotificationQueueRepository;
+  private _notificationSettingsRepository?: NotificationSettingsRepository;
+  private _paymentVerificationJobRepository?: PaymentVerificationJobRepository;
 
   private constructor() {
     this.logger = new Logger('RepositoryManager');
@@ -112,6 +122,41 @@ class RepositoryManager {
     return this._auditLogRepository;
   }
 
+  get invoiceTemplates(): InvoiceTemplateRepository {
+    if (!this._invoiceTemplateRepository) {
+      this._invoiceTemplateRepository = new InvoiceTemplateRepository();
+    }
+    return this._invoiceTemplateRepository;
+  }
+
+  get invoiceAccessTokens(): InvoiceAccessTokenRepository {
+    if (!this._invoiceAccessTokenRepository) {
+      this._invoiceAccessTokenRepository = new InvoiceAccessTokenRepository();
+    }
+    return this._invoiceAccessTokenRepository;
+  }
+
+  get notificationQueue(): NotificationQueueRepository {
+    if (!this._notificationQueueRepository) {
+      this._notificationQueueRepository = new NotificationQueueRepository();
+    }
+    return this._notificationQueueRepository;
+  }
+
+  get notificationSettings(): NotificationSettingsRepository {
+    if (!this._notificationSettingsRepository) {
+      this._notificationSettingsRepository = new NotificationSettingsRepository();
+    }
+    return this._notificationSettingsRepository;
+  }
+
+  get paymentVerificationJobs(): PaymentVerificationJobRepository {
+    if (!this._paymentVerificationJobRepository) {
+      this._paymentVerificationJobRepository = new PaymentVerificationJobRepository();
+    }
+    return this._paymentVerificationJobRepository;
+  }
+
   /**
    * Perform health check on all active repositories
    */
@@ -133,6 +178,11 @@ class RepositoryManager {
       { name: 'smartContracts', repo: this._smartContractRepository },
       { name: 'organizationSettings', repo: this._organizationSettingRepository },
       { name: 'auditLogs', repo: this._auditLogRepository },
+      { name: 'invoiceTemplates', repo: this._invoiceTemplateRepository },
+      { name: 'invoiceAccessTokens', repo: this._invoiceAccessTokenRepository },
+      { name: 'notificationQueue', repo: this._notificationQueueRepository },
+      { name: 'notificationSettings', repo: this._notificationSettingsRepository },
+      { name: 'paymentVerificationJobs', repo: this._paymentVerificationJobRepository },
     ].filter(item => item.repo !== undefined);
 
     // Run health checks in parallel
@@ -182,6 +232,11 @@ class RepositoryManager {
     this._smartContractRepository = undefined;
     this._organizationSettingRepository = undefined;
     this._auditLogRepository = undefined;
+    this._invoiceTemplateRepository = undefined;
+    this._invoiceAccessTokenRepository = undefined;
+    this._notificationQueueRepository = undefined;
+    this._notificationSettingsRepository = undefined;
+    this._paymentVerificationJobRepository = undefined;
 
     this.logger.debug('Repository instances cleared');
   }
@@ -202,6 +257,11 @@ export {
   SmartContractRepository,
   OrganizationSettingRepository,
   AuditLogRepository,
+  InvoiceTemplateRepository,
+  InvoiceAccessTokenRepository,
+  NotificationQueueRepository,
+  NotificationSettingsRepository,
+  PaymentVerificationJobRepository,
 };
 
 // Export BaseRepository separately

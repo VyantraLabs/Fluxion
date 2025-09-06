@@ -1,0 +1,75 @@
+<h2>New Invoice Received</h2>
+
+<p>Hi {{clientName}},</p>
+
+<p>You have received a new invoice from <strong>{{creatorName}}</strong> at <strong>{{organizationName}}</strong>. Please review the details below and make your payment by the due date.</p>
+
+<div class="highlight-box">
+    <table class="info-table" style="margin: 0;">
+        <tr>
+            <th width="40%">Invoice Number</th>
+            <td><strong>{{invoiceNumber}}</strong></td>
+        </tr>
+        <tr>
+            <th>Amount Due</th>
+            <td><span class="amount">{{amount}} {{currency}}</span></td>
+        </tr>
+        <tr>
+            <th>Due Date</th>
+            <td>{{dueDate}}</td>
+        </tr>
+        <tr>
+            <th>Network</th>
+            <td>{{networkName}}</td>
+        </tr>
+        {{#if description}}
+        <tr>
+            <th>Description</th>
+            <td>{{description}}</td>
+        </tr>
+        {{/if}}
+    </table>
+</div>
+
+<div class="text-center mt-20 mb-20">
+    <a href="{{paymentUrl}}" class="cta-button">💳 Pay Invoice Now</a>
+</div>
+
+<p><strong>Payment Instructions:</strong></p>
+<ol>
+    <li>Click the "Pay Invoice Now" button above</li>
+    <li>Connect your crypto wallet (MetaMask, WalletConnect, etc.)</li>
+    <li>Confirm the payment amount and network</li>
+    <li>Submit the transaction</li>
+    <li>You'll receive a confirmation email once payment is processed</li>
+</ol>
+
+<p><strong>Important Notes:</strong></p>
+<ul>
+    <li>Ensure you're paying on the correct blockchain network: <strong>{{networkName}}</strong></li>
+    <li>The exact amount must be paid: <strong>{{amount}} {{currency}}</strong></li>
+    <li>Payment must be received by <strong>{{dueDate}}</strong></li>
+    <li>Transaction fees are separate from the invoice amount</li>
+</ul>
+
+<div class="highlight-box">
+    <p><strong>Need Help?</strong></p>
+    <p>If you're new to crypto payments or need assistance:</p>
+    <ul>
+        <li><a href="https://fluxion.pay/help/payments">Payment Guide</a></li>
+        <li><a href="https://fluxion.pay/help/wallets">Wallet Setup</a></li>
+        <li><a href="mailto:support@fluxion.pay">Contact Support</a></li>
+    </ul>
+</div>
+
+<div class="text-center mt-20">
+    <a href="{{invoiceViewUrl}}" class="secondary-button">📄 View Full Invoice</a>
+</div>
+
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+<p style="font-size: 14px; color: #6b7280;">
+    <strong>Invoice ID:</strong> {{invoiceId}}<br>
+    <strong>From:</strong> {{creatorName}} ({{organizationName}})<br>
+    <strong>Powered by:</strong> Fluxion - Crypto Invoicing Made Simple
+</p>

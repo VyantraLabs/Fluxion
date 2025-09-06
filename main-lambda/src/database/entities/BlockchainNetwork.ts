@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   OneToMany,
   CreateDateColumn,
@@ -14,13 +14,9 @@ import { Payment } from './Payment';
 import { PayrollBatch } from './PayrollBatch';
 
 @Entity('blockchain_networks')
-@Index(['chainId'], { unique: true })
 @Index(['isActive'])
 export class BlockchainNetwork {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
-
-  @Column({ name: 'chain_id', type: 'integer', unique: true, nullable: false })
+  @PrimaryColumn({ name: 'chain_id', type: 'integer' })
   chainId!: number;
 
   @Column({ type: 'varchar', length: 100, nullable: false })
@@ -49,6 +45,7 @@ export class BlockchainNetwork {
     maxPriorityFeePerGas?: string;
     type?: 'legacy' | 'eip1559';
   };
+
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

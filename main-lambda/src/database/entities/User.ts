@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   OneToMany,
@@ -10,11 +10,15 @@ import {
   Index,
   JoinColumn,
   Check,
+  BeforeInsert,
 } from 'typeorm';
+import { ulid } from 'ulid';
 import { Organization } from './Organization';
 import { Invoice } from './Invoice';
 import { PayrollBatch } from './PayrollBatch';
 import { AuditLog } from './AuditLog';
+import { InvoiceTemplate } from './InvoiceTemplate';
+import { NotificationSettings } from './NotificationSettings';
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -24,10 +28,10 @@ export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 @Index(['organizationId'])
 @Check('wallet_format', "wallet_address ~* '^0x[a-fA-F0-9]{40}$' OR wallet_address IS NULL")
 export class User {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'varchar' })
   id!: string;
 
-  @Column({ name: 'organization_id', type: 'uuid', nullable: false })
+  @Column({ name: 'organization_id', type: 'varchar', nullable: false })
   organizationId!: string;
 
   @Column({ type: 'varchar', length: 320, nullable: false })
@@ -85,6 +89,12 @@ export class User {
   @OneToMany(() => AuditLog, auditLog => auditLog.user)
   auditLogs!: AuditLog[];
 
+  @OneToMany(() => InvoiceTemplate, template => template.createdByUser)
+  invoiceTemplates!: InvoiceTemplate[];
+
+  @OneToMany(() => NotificationSettings, settings => settings.user, { cascade: true })
+  notificationSettings!: NotificationSettings[];
+
   // Computed properties
   get fullName(): string | null {
     if (!this.firstName && !this.lastName) return null;
@@ -135,6 +145,13 @@ export class User {
   // Update last login timestamp
   updateLastLogin(): void {
     this.lastLoginAt = new Date();
+  }
+
+  @BeforeInsert()
+  generateId(): void {
+    if (!this.id) {
+      this.id = ulid();
+    }
   }
 
   // Static validation methods

@@ -1,0 +1,167 @@
+{{#if (eq escalationLevel 1)}}
+<h2>⚠️ Payment Overdue Notice</h2>
+{{else if (eq escalationLevel 2)}}
+<h2>🚨 Final Payment Notice</h2>
+{{else}}
+<h2>🔴 Critical: Payment Demand</h2>
+{{/if}}
+
+<p>{{#if (eq escalationLevel 1)}}Dear{{else}}<strong>URGENT - Please read immediately</strong><br>Dear{{/if}} {{clientName}},</p>
+
+{{#if (eq escalationLevel 1)}}
+<p>Your invoice from <strong>{{creatorName}}</strong> at <strong>{{organizationName}}</strong> is now significantly overdue. Immediate payment is required to avoid service interruption.</p>
+{{else if (eq escalationLevel 2)}}
+<p>This is a <strong>FINAL NOTICE</strong> for your overdue invoice from <strong>{{creatorName}}</strong> at <strong>{{organizationName}}</strong>. Payment must be made immediately.</p>
+{{else}}
+<p>This is a <strong>CRITICAL PAYMENT DEMAND</strong> for your severely overdue invoice. Legal action may be considered if payment is not received immediately.</p>
+{{/if}}
+
+<div class="urgent-box">
+    <p style="font-size: 20px; margin: 0; color: #dc2626;"><strong>🚨 {{daysPastDue}} DAYS OVERDUE</strong></p>
+    <p style="margin: 10px 0 0 0;">This invoice was due on {{dueDate}} and requires immediate payment.</p>
+</div>
+
+<div class="highlight-box" style="border-left: 4px solid #dc2626;">
+    <table class="info-table" style="margin: 0;">
+        <tr>
+            <th width="40%">Invoice Number</th>
+            <td><strong style="color: #dc2626;">{{invoiceNumber}}</strong></td>
+        </tr>
+        <tr>
+            <th>Amount Due</th>
+            <td><span class="amount" style="color: #dc2626;">{{amount}} {{currency}}</span></td>
+        </tr>
+        {{#if lateFee}}
+        <tr>
+            <th>Late Fee</th>
+            <td><span style="color: #dc2626; font-weight: bold;">{{lateFee}} {{currency}}</span></td>
+        </tr>
+        <tr>
+            <th><strong>Total Due</strong></th>
+            <td><span class="amount" style="color: #dc2626;">{{totalWithFee}} {{currency}}</span></td>
+        </tr>
+        {{/if}}
+        <tr>
+            <th>Original Due Date</th>
+            <td>{{dueDate}}</td>
+        </tr>
+        <tr>
+            <th>Days Overdue</th>
+            <td><strong style="color: #dc2626; font-size: 18px;">{{daysPastDue}} DAYS</strong></td>
+        </tr>
+        <tr>
+            <th>Network</th>
+            <td>{{networkName}}</td>
+        </tr>
+        <tr>
+            <th>Escalation Level</th>
+            <td>
+                {{#if (eq escalationLevel 1)}}
+                <span style="color: #f59e0b;">⚠️ Level 1 - Overdue Notice</span>
+                {{else if (eq escalationLevel 2)}}
+                <span style="color: #dc2626;">🚨 Level 2 - Final Notice</span>
+                {{else}}
+                <span style="color: #991b1b;">🔴 Level 3 - Payment Demand</span>
+                {{/if}}
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="text-center mt-20 mb-20">
+    <a href="{{paymentUrl}}" class="cta-button" style="background: #dc2626; font-size: 18px; padding: 20px 40px;">💳 PAY IMMEDIATELY</a>
+</div>
+
+{{#if (eq escalationLevel 1)}}
+<p><strong>⚠️ Consequences of Non-Payment:</strong></p>
+<ul>
+    <li>Service suspension or termination</li>
+    <li>Additional late fees may apply</li>
+    <li>Impact on future business relationship</li>
+    <li>Escalation to formal collection process</li>
+</ul>
+{{else if (eq escalationLevel 2)}}
+<p><strong>🚨 FINAL WARNING - Immediate Consequences:</strong></p>
+<ul>
+    <li><strong>Service Termination:</strong> All services will be suspended immediately</li>
+    <li><strong>Account Closure:</strong> Your account may be closed without further notice</li>
+    <li><strong>Collection Action:</strong> This debt may be referred to collections</li>
+    <li><strong>Legal Action:</strong> Legal proceedings may be initiated</li>
+    <li><strong>Credit Impact:</strong> Non-payment may be reported to credit agencies</li>
+</ul>
+{{else}}
+<p><strong>🔴 CRITICAL - Legal Action Pending:</strong></p>
+<ul>
+    <li><strong>IMMEDIATE SERVICE TERMINATION</strong> - All services suspended</li>
+    <li><strong>ACCOUNT PERMANENTLY CLOSED</strong> - No future business relationship</li>
+    <li><strong>DEBT COLLECTION REFERRAL</strong> - Referred to third-party collections</li>
+    <li><strong>LEGAL PROCEEDINGS</strong> - Lawsuit may be filed within 7 days</li>
+    <li><strong>CREDIT REPORTING</strong> - Negative credit report filing</li>
+    <li><strong>ADDITIONAL COSTS</strong> - You may be liable for legal fees and collection costs</li>
+</ul>
+{{/if}}
+
+<div class="urgent-box">
+    <p style="font-size: 18px; margin: 0 0 10px 0; color: #dc2626;"><strong>🕐 TIME-SENSITIVE ACTION REQUIRED</strong></p>
+    {{#if (eq escalationLevel 1)}}
+    <p style="margin: 0;"><strong>Pay within 3 days</strong> to avoid escalation to final notice.</p>
+    {{else if (eq escalationLevel 2)}}
+    <p style="margin: 0;"><strong>Pay within 24 hours</strong> to avoid collection referral and legal action.</p>
+    {{else}}
+    <p style="margin: 0;"><strong>Pay within 12 hours</strong> to avoid immediate legal proceedings.</p>
+    {{/if}}
+</div>
+
+<p><strong>📞 IMMEDIATE CONTACT REQUIRED:</strong></p>
+{{#if (eq escalationLevel 1)}}
+<p>If you cannot pay immediately, contact {{creatorName}} within 24 hours to discuss payment arrangements:</p>
+{{else}}
+<p>If you have already paid or there is a dispute, contact us <strong>IMMEDIATELY</strong>:</p>
+{{/if}}
+<ul>
+    <li><strong>Email:</strong> {{creatorEmail}} or reply to this email</li>
+    <li><strong>Organization:</strong> {{organizationName}}</li>
+    {{#if (gt escalationLevel 1)}}
+    <li><strong>Urgent Line:</strong> Available in your account dashboard</li>
+    {{/if}}
+</ul>
+
+<div class="highlight-box" style="background-color: #fef2f2; border-color: #fecaca;">
+    <p><strong>Payment Methods - URGENT:</strong></p>
+    <ol>
+        <li><strong>Immediate Crypto Payment:</strong> <a href="{{paymentUrl}}" style="color: #dc2626; font-weight: bold;">Pay with crypto wallet NOW</a></li>
+        <li><strong>Wire Transfer:</strong> Contact {{creatorEmail}} for wire instructions</li>
+        <li><strong>Emergency Payment:</strong> Call or email for alternative payment options</li>
+    </ol>
+    <p style="margin-bottom: 0;"><strong>Network:</strong> {{networkName}} | <strong>Amount:</strong> {{amount}} {{currency}}</p>
+</div>
+
+{{#if (gt escalationLevel 1)}}
+<div class="text-center mt-20">
+    <a href="mailto:{{creatorEmail}}?subject=URGENT: Invoice {{invoiceNumber}} - {{daysPastDue}} Days Overdue" class="secondary-button" style="background-color: #dc2626;">📧 EMERGENCY CONTACT</a>
+    <a href="{{invoiceViewUrl}}" class="secondary-button">📄 View Invoice</a>
+</div>
+{{/if}}
+
+<hr style="border: none; border-top: 2px solid #dc2626; margin: 30px 0;">
+
+<p style="font-size: 14px; color: #374151; background-color: #fef2f2; padding: 15px; border-radius: 8px; border: 1px solid #fecaca;">
+    <strong>⚠️ LEGAL NOTICE:</strong><br>
+    <strong>Invoice ID:</strong> {{invoiceId}}<br>
+    <strong>Invoice Number:</strong> {{invoiceNumber}}<br>
+    <strong>Creditor:</strong> {{creatorName}} ({{organizationName}})<br>
+    <strong>Debtor:</strong> {{clientName}}<br>
+    <strong>Amount Due:</strong> {{amount}} {{currency}}{{#if lateFee}} + {{lateFee}} {{currency}} late fee{{/if}}<br>
+    <strong>Days Overdue:</strong> {{daysPastDue}} days<br>
+    <strong>Escalation:</strong> Level {{escalationLevel}} of 3
+</p>
+
+<p style="font-size: 12px; color: #6b7280; margin-top: 20px; text-align: center;">
+    {{#if (eq escalationLevel 1)}}
+    <strong>This is an automated collection notice. Payment or contact is required within 3 days.</strong>
+    {{else if (eq escalationLevel 2)}}
+    <strong>FINAL AUTOMATED NOTICE. Human review and legal action will follow if payment is not received within 24 hours.</strong>
+    {{else}}
+    <strong>LEGAL DEPARTMENT NOTICE. This account has been flagged for immediate legal action. Payment must be received within 12 hours to prevent legal proceedings.</strong>
+    {{/if}}
+</p>

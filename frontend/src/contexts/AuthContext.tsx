@@ -9,6 +9,7 @@ import {
   UserExistsResponse,
   UserContextState,
   UserContextActions,
+  CompleteOnboardingRequest,
 } from '@/types/user';
 import { WalletAddress } from '@/types/web3';
 import { authApi, userApi, handleApiResponse, handleApiError } from '@/utils/api';
@@ -22,6 +23,8 @@ const initialState: UserContextState = {
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  isOnboarding: false,
+  needsOnboarding: false,
 };
 
 // Action types
@@ -30,6 +33,8 @@ type AuthAction =
   | { type: 'SET_USER'; payload: User }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_AUTHENTICATED'; payload: boolean }
+  | { type: 'SET_ONBOARDING'; payload: boolean }
+  | { type: 'SET_NEEDS_ONBOARDING'; payload: boolean }
   | { type: 'LOGOUT' };
 
 // Reducer
@@ -45,6 +50,8 @@ const authReducer = (state: UserContextState, action: AuthAction): UserContextSt
         isAuthenticated: true,
         isLoading: false,
         error: null,
+        isOnboarding: false, // User is authenticated, not onboarding
+        needsOnboarding: false, // User is authenticated, onboarding complete
       };
     
     case 'SET_ERROR':
@@ -52,6 +59,12 @@ const authReducer = (state: UserContextState, action: AuthAction): UserContextSt
     
     case 'SET_AUTHENTICATED':
       return { ...state, isAuthenticated: action.payload };
+    
+    case 'SET_ONBOARDING':
+      return { ...state, isOnboarding: action.payload };
+    
+    case 'SET_NEEDS_ONBOARDING':
+      return { ...state, needsOnboarding: action.payload };
     
     case 'LOGOUT':
       return {
@@ -100,7 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (token && cachedUser) {
         try {
           // Validate token by making an API call
-          await userApi.getProfile(cachedUser.wallet_address);
+          await userApi.getProfile();
           dispatch({ type: 'SET_USER', payload: cachedUser });
           console.debug('Authentication initialized with cached user:', cachedUser.wallet_address);
         } catch (error) {
@@ -129,9 +142,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      // Verify signature with backend
+      // Try to authenticate existing user first
+      console.debug('Attempting to authenticate existing user');
       const response = await authApi.verifySignature(walletAddress, signature, message);
-      const { token, user, expires_at }: AuthResponse = handleApiResponse(response);
+      const { token, user, expires_at, needsOnboarding, organization }: AuthResponse = handleApiResponse(response);
 
       // Calculate expiration time in milliseconds
       const expiresAt = new Date(expires_at).getTime();
@@ -141,13 +155,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       authStorage.setToken(token, expiresInMs);
       userStorage.setProfile(user);
 
+      // Set user state
       dispatch({ type: 'SET_USER', payload: user });
-      toast.success('Successfully authenticated!');
+
+      // Handle onboarding state for existing users
+      if (needsOnboarding) {
+        dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: true });
+        console.log('Existing user needs onboarding completion, organization:', organization);
+        toast.success('Welcome back! Please complete your profile setup.');
+      } else {
+        dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: false });
+        toast.success('Welcome back!');
+      }
+      
     } catch (error: any) {
       console.error('Authentication error:', error);
+      
+      // Handle NOT_FOUND error (user doesn't exist) - trigger onboarding flow
+      if (error.status === 404 || error.code === 'NOT_FOUND') {
+        console.debug('User not found, triggering onboarding flow');
+        dispatch({ type: 'SET_ONBOARDING', payload: true });
+        dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: true });
+        
+        // Store signature data for onboarding completion
+        (window as any).__onboardingData = { walletAddress, signature, message };
+        
+        toast.info('Welcome to Fluxion! Please complete your profile setup to get started.');
+        return; // Don't throw error, let onboarding handle it
+      }
+
       let errorMessage = 'Authentication failed';
       
-      // Handle enhanced error responses
+      // Handle other error responses
       if (error.code) {
         switch (error.code) {
           case 'VALIDATION_ERROR':
@@ -208,7 +247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      const response = await userApi.updateProfile(state.user.wallet_address, updates);
+      const response = await userApi.updateProfile(updates);
       const updatedUser: User = handleApiResponse(response);
       
       // Update storage and state
@@ -229,7 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!state.user) return;
 
     try {
-      const response = await userApi.getProfile(state.user.wallet_address);
+      const response = await userApi.getProfile();
       
       if (response.success && response.data) {
         const refreshedUser: User = response.data;
@@ -247,6 +286,116 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return handleApiResponse(response);
     } catch (error: any) {
       console.error('Error checking user existence:', error);
+      throw error;
+    }
+  };
+
+  const completeOnboarding = async (data: CompleteOnboardingRequest): Promise<void> => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      console.debug('Completing onboarding with data:', data);
+      
+      // If user is already authenticated, use the update endpoint
+      if (state.user && state.isAuthenticated) {
+        console.debug('Updating existing user organization');
+        const response = await userApi.completeOnboarding(data);
+        const updatedUser: User = handleApiResponse(response);
+        
+        // Update storage and state with the updated user
+        userStorage.setProfile(updatedUser);
+        dispatch({ type: 'SET_USER', payload: updatedUser });
+        
+        // Mark onboarding as complete
+        dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: false });
+        dispatch({ type: 'SET_ONBOARDING', payload: false });
+        
+        console.debug('Onboarding completed successfully for existing user');
+        toast.success('Welcome to Fluxion! Your account is now set up.');
+        return;
+      }
+
+      // For new users, get signature data stored during login attempt
+      const onboardingData = (window as any).__onboardingData;
+      if (!onboardingData) {
+        throw new Error('Missing authentication data. Please reconnect your wallet.');
+      }
+
+      console.debug('Creating new user with organization');
+      
+      // Create new user with organization
+      const response = await authApi.createUser(
+        onboardingData.walletAddress,
+        onboardingData.signature,
+        onboardingData.message,
+        data.organizationName,
+        data.displayName,
+        data.email
+      );
+      
+      const { token, user, expires_at }: AuthResponse = handleApiResponse(response);
+
+      // Calculate expiration time in milliseconds
+      const expiresAt = new Date(expires_at).getTime();
+      const expiresInMs = expiresAt - Date.now();
+
+      // Store authentication data
+      authStorage.setToken(token, expiresInMs);
+      userStorage.setProfile(user);
+
+      // Set user state
+      dispatch({ type: 'SET_USER', payload: user });
+      
+      // Mark onboarding as complete
+      dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: false });
+      dispatch({ type: 'SET_ONBOARDING', payload: false });
+      
+      // Clean up stored onboarding data
+      delete (window as any).__onboardingData;
+      
+      console.debug('New user created and onboarding completed successfully');
+      toast.success('Welcome to Fluxion! Your account has been created.');
+      
+    } catch (error: any) {
+      console.error('Onboarding completion error:', error);
+      let errorMessage = 'Failed to complete setup';
+      
+      // Handle enhanced error responses
+      if (error.code) {
+        switch (error.code) {
+          case 'VALIDATION_ERROR':
+            errorMessage = 'Please check your information and try again.';
+            break;
+          case 'UNAUTHORIZED':
+            errorMessage = 'Invalid wallet signature. Please reconnect your wallet and try again.';
+            break;
+          case 'CONFLICT':
+            if (error.message && error.message.includes('User already exists')) {
+              errorMessage = 'Account already exists. Please use the login flow instead.';
+              // Clear onboarding state and let user try login again
+              dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: false });
+              dispatch({ type: 'SET_ONBOARDING', payload: false });
+              delete (window as any).__onboardingData;
+            } else {
+              errorMessage = 'Organization name already exists. Please choose another.';
+            }
+            break;
+          default:
+            errorMessage = error.message || errorMessage;
+        }
+      } else if (error.status === 401) {
+        errorMessage = 'Invalid wallet signature. Please reconnect your wallet and try again.';
+      } else if (error.validation_errors) {
+        // Handle validation errors from backend
+        const firstError = Object.values(error.validation_errors)[0];
+        errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      toast.error(errorMessage);
       throw error;
     }
   };
@@ -288,6 +437,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateProfile,
     refreshUser,
     checkUserExists,
+    completeOnboarding,
   };
 
   return (

@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { ulid } from 'ulid';
 import { getDatabase } from '@/shared/database/client';
 import { getBlockchainService } from '@/shared/blockchain/client';
 import { getNotificationService } from '@/shared/notifications/client';
@@ -80,7 +80,7 @@ export class PaymentService {
       }
 
       // Create payment record
-      const paymentId = uuidv4();
+      const paymentId = ulid();
       const now = new Date().toISOString();
 
       // Get transaction details for additional information
@@ -341,7 +341,7 @@ export class PaymentService {
     data: VerifyPaymentDTO, 
     errorReason: string
   ): Promise<void> {
-    const paymentId = uuidv4();
+    const paymentId = ulid();
     const now = new Date().toISOString();
 
     try {

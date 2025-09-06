@@ -32,8 +32,8 @@ export class ConfigService {
   /**
    * Get all blockchain networks with optional filtering
    */
-  async getNetworks(filter: NetworkFilter = {}): Promise<NetworksResponse> {
-    this.logger.info('Fetching blockchain networks', { filter });
+  async getNetworks(filter: NetworkFilter = {}, includeTokens: boolean = false): Promise<NetworksResponse> {
+    this.logger.info('Fetching blockchain networks', { filter, includeTokens });
 
     try {
       const queryBuilder = this.networkRepo.createQueryBuilder('network');
@@ -58,7 +58,40 @@ export class ConfigService {
       queryBuilder.orderBy('network.chainId', 'ASC');
 
       const networks = await queryBuilder.getMany();
-      const networkConfigs = networks.map(network => this.transformNetworkEntity(network));
+      
+      // If includeTokens is true, fetch tokens for each network
+      let networkConfigs: any[] = [];
+      
+      if (includeTokens) {
+        // Fetch all active tokens with their network relationships in one query
+        const tokenQueryBuilder = this.tokenRepo.createQueryBuilder('token')
+          .leftJoinAndSelect('token.network', 'network')
+          .where('token.isActive = :isActive', { isActive: true })
+          .andWhere('network.isActive = :networkActive', { networkActive: true })
+          .orderBy('network.chainId', 'ASC')
+          .addOrderBy('token.isNative', 'DESC')
+          .addOrderBy('token.isStablecoin', 'DESC')
+          .addOrderBy('token.symbol', 'ASC');
+        
+        const allTokens = await tokenQueryBuilder.getMany();
+        
+        // Group tokens by chain ID
+        const tokensByChainId = allTokens.reduce((acc, token) => {
+          if (!acc[token.chainId]) {
+            acc[token.chainId] = [];
+          }
+          acc[token.chainId].push(this.transformTokenEntity(token));
+          return acc;
+        }, {} as { [chainId: number]: TokenConfig[] });
+        
+        // Transform networks with their tokens
+        networkConfigs = networks.map(network => ({
+          ...this.transformNetworkEntity(network),
+          tokens: tokensByChainId[network.chainId] || []
+        }));
+      } else {
+        networkConfigs = networks.map(network => this.transformNetworkEntity(network));
+      }
 
       const mainnets = networkConfigs.filter(n => !n.isTestnet);
       const testnets = networkConfigs.filter(n => n.isTestnet);
@@ -66,7 +99,8 @@ export class ConfigService {
       this.logger.info('Successfully fetched networks', { 
         total: networks.length,
         mainnets: mainnets.length,
-        testnets: testnets.length
+        testnets: testnets.length,
+        includeTokens
       });
 
       return {
@@ -214,7 +248,7 @@ export class ConfigService {
 
     try {
       const [networksResponse, tokensResponse] = await Promise.all([
-        this.getNetworks({ isActive: true }),
+        this.getNetworks({ isActive: true }, false),
         this.getTokens({ isActive: true }),
       ]);
 
@@ -307,7 +341,7 @@ export class ConfigService {
    */
   private transformNetworkEntity(network: BlockchainNetwork): NetworkConfig {
     return {
-      id: network.id,
+      id: network.chainId.toString(), // Use chainId as the id since it's the primary key
       chainId: network.chainId,
       name: network.name,
       symbol: network.symbol,
@@ -331,7 +365,7 @@ export class ConfigService {
   private transformTokenEntity(token: Token): TokenConfig {
     return {
       id: token.id,
-      networkId: token.networkId,
+      networkId: token.chainId.toString(), // Map chainId to networkId for frontend compatibility
       contractAddress: token.contractAddress,
       symbol: token.symbol,
       name: token.name,

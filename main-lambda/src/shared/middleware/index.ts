@@ -205,8 +205,9 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
     
     // Add user info to request context
     if (req.context) {
-      (req.context as RequestContext).userId = decoded.wallet_address;
+      (req.context as RequestContext).userId = decoded.user_id; // Always use the UUID user ID
       (req.context as RequestContext).walletAddress = decoded.wallet_address;
+      (req.context as RequestContext).tenantId = decoded.tenant_id; // Add tenant ID to context
     }
 
     logger.info('User authenticated', { 
@@ -256,8 +257,9 @@ export const optionalAuth = (req: Request, _res: Response, next: NextFunction) =
     const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
     
     if (req.context) {
-      (req.context as RequestContext).userId = decoded.wallet_address;
-      (req.context as RequestContext).walletAddress = decoded.wallet_address;
+      (req.context as RequestContext).userId = decoded.user_id; // Use UUID user ID
+      (req.context as RequestContext).walletAddress = decoded.wallet_address; // Use wallet address
+      (req.context as RequestContext).tenantId = decoded.tenant_id; // Add tenant ID
     }
 
     logger.debug('Optional auth successful', { 
@@ -463,7 +465,7 @@ export const responseHelpers = (req: Request, res: Response, next: NextFunction)
 const responseCache = new Map<string, { data: any; expires: number }>();
 
 export const cacheResponse = (ttlSeconds: number) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     // Generate cache key based on URL and query params
     const cacheKey = `${req.method}:${req.path}:${JSON.stringify(req.query)}`;
     
@@ -503,6 +505,90 @@ export const cacheResponse = (ttlSeconds: number) => {
 
     next();
   };
+};
+
+/**
+ * Admin-only middleware
+ */
+export const adminOnly = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Check if user is authenticated first
+    if (!req.context?.userId) {
+      const response: APIResponse = {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required for admin access'
+        },
+        meta: {
+          requestId: req.context?.requestId || 'unknown',
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      res.status(401).json(response);
+      return;
+    }
+
+    // Import admin service to validate admin access
+    const { AdminService } = await import('@/modules/admin/service');
+    const adminService = new AdminService();
+    
+    // Get tenant context
+    const { getTenantContext } = await import('@/shared/middleware/tenant');
+    const tenantContext = getTenantContext(req);
+    
+    const isAdmin = await adminService.validateAdminAccess(tenantContext);
+    
+    if (!isAdmin) {
+      logger.warn('Non-admin user attempted to access admin endpoint', {
+        userId: req.context.userId,
+        path: req.path
+      });
+      
+      const response: APIResponse = {
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Admin privileges required for this operation'
+        },
+        meta: {
+          requestId: req.context.requestId || 'unknown',
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      res.status(403).json(response);
+      return;
+    }
+
+    logger.info('Admin access granted', {
+      userId: req.context.userId,
+      path: req.path
+    });
+
+    next();
+  } catch (error: any) {
+    logger.error('Failed to validate admin access', {
+      error: error.message,
+      userId: req.context?.userId,
+      path: req.path
+    });
+    
+    const response: APIResponse = {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to validate admin access'
+      },
+      meta: {
+        requestId: req.context?.requestId || 'unknown',
+        timestamp: new Date().toISOString()
+      }
+    };
+    
+    res.status(500).json(response);
+  }
 };
 
 // Clean up expired cache entries periodically

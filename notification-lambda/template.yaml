@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Fluxion Notification Lambda - Email and webhook notification processing'
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 180
+    MemorySize: 512
+    Environment:
+      Variables:
+        NODE_ENV: production
+        LOG_LEVEL: info
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, production]
+    Description: Deployment environment
+
+  NotificationQueueArn:
+    Type: String
+    Description: ARN of the SQS notification queue
+
+  DatabaseHost:
+    Type: String
+    Description: PostgreSQL database host
+
+  DatabasePort:
+    Type: Number
+    Default: 5432
+    Description: PostgreSQL database port
+
+  DatabaseName:
+    Type: String
+    Description: PostgreSQL database name
+
+  DatabaseUsername:
+    Type: String
+    Description: PostgreSQL database username
+
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    Description: PostgreSQL database password
+
+  SendGridApiKey:
+    Type: String
+    NoEcho: true
+    Description: SendGrid API key for email delivery
+    Default: ''
+
+  SmtpHost:
+    Type: String
+    Description: SMTP server host for backup email delivery
+    Default: ''
+
+  SmtpPort:
+    Type: Number
+    Default: 587
+    Description: SMTP server port
+
+  SmtpUsername:
+    Type: String
+    Description: SMTP username
+    Default: ''
+
+  SmtpPassword:
+    Type: String
+    NoEcho: true
+    Description: SMTP password
+    Default: ''
+
+  EthereumRpcUrl:
+    Type: String
+    Description: Ethereum RPC URL for blockchain verification
+    Default: ''
+
+  PolygonRpcUrl:
+    Type: String
+    Description: Polygon RPC URL for blockchain verification
+    Default: ''
+
+  ArbitrumRpcUrl:
+    Type: String
+    Description: Arbitrum RPC URL for blockchain verification
+    Default: ''
+
+  BaseRpcUrl:
+    Type: String
+    Description: Base RPC URL for blockchain verification
+    Default: ''
+
+Resources:
+  NotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'fluxion-notification-${Environment}'
+      CodeUri: dist/
+      Handler: index.handler
+      Description: 'Processes SQS messages for email and webhook notifications'
+      ReservedConcurrencyLimit: 50
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          DB_HOST: !Ref DatabaseHost
+          DB_PORT: !Ref DatabasePort
+          DB_DATABASE: !Ref DatabaseName
+          DB_USERNAME: !Ref DatabaseUsername
+          DB_PASSWORD: !Ref DatabasePassword
+          SENDGRID_API_KEY: !Ref SendGridApiKey
+          SMTP_HOST: !Ref SmtpHost
+          SMTP_PORT: !Ref SmtpPort
+          SMTP_USERNAME: !Ref SmtpUsername
+          SMTP_PASSWORD: !Ref SmtpPassword
+          ETHEREUM_RPC_URL: !Ref EthereumRpcUrl
+          POLYGON_RPC_URL: !Ref PolygonRpcUrl
+          ARBITRUM_RPC_URL: !Ref ArbitrumRpcUrl
+          BASE_RPC_URL: !Ref BaseRpcUrl
+      Events:
+        NotificationQueue:
+          Type: SQS
+          Properties:
+            Queue: !Ref NotificationQueueArn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 5
+      Policies:
+        - SESFullAccess
+        - CloudWatchFullAccess
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !Ref NotificationQueueArn
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:GetParametersByPath
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/fluxion/${Environment}/*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/fluxion-notification-${Environment}*'
+
+  NotificationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/fluxion-notification-${Environment}'
+      RetentionInDays: 14
+
+  # CloudWatch Alarms for monitoring
+  NotificationErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'fluxion-notification-errors-${Environment}'
+      AlarmDescription: 'Notification Lambda error rate alarm'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref NotificationFunction
+      AlarmActions:
+        - !Ref NotificationAlarmTopic
+
+  NotificationDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'fluxion-notification-duration-${Environment}'
+      AlarmDescription: 'Notification Lambda duration alarm'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 120000  # 2 minutes
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref NotificationFunction
+      AlarmActions:
+        - !Ref NotificationAlarmTopic
+
+  NotificationAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'fluxion-notification-alarms-${Environment}'
+      DisplayName: 'Fluxion Notification Service Alarms'
+
+  # Dashboard for monitoring
+  NotificationDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'FluxionNotification-${Environment}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${NotificationFunction}"],
+                  [".", "Errors", ".", "."],
+                  [".", "Duration", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Notification Lambda Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["Fluxion/NotificationLambda", "NotificationProcessed"],
+                  [".", "NotificationSuccessful"],
+                  [".", "NotificationFailed"]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Notification Processing"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${NotificationFunction}' | fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 50",
+                "region": "${AWS::Region}",
+                "title": "Recent Errors"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  NotificationFunctionArn:
+    Description: 'ARN of the notification Lambda function'
+    Value: !GetAtt NotificationFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationFunctionArn'
+
+  NotificationFunctionName:
+    Description: 'Name of the notification Lambda function'
+    Value: !Ref NotificationFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationFunctionName'
+
+  NotificationLogGroup:
+    Description: 'CloudWatch Log Group for notification function'
+    Value: !Ref NotificationFunctionLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationLogGroup'
+
+  DashboardURL:
+    Description: 'CloudWatch Dashboard URL for monitoring'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${NotificationDashboard}'

@@ -136,6 +136,9 @@ export const formatRelativeDate = (date: string | Date): string => {
   return 'just now';
 };
 
+// Alias for consistency with component imports
+export const formatRelativeTime = formatRelativeDate;
+
 // Due date status formatting
 export const formatDueDate = (dueDate: string | Date): {
   formatted: string;

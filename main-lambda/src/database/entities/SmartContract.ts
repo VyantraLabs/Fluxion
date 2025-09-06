@@ -13,16 +13,16 @@ import { BlockchainNetwork } from './BlockchainNetwork';
 export type ContractType = 'payment' | 'escrow' | 'subscription' | 'payroll' | 'multisig';
 
 @Entity('smart_contracts')
-@Index(['contractAddress', 'networkId'], { unique: true })
-@Index(['networkId'])
+@Index(['contractAddress', 'chainId'], { unique: true })
+@Index(['chainId'])
 @Index(['contractType'])
 @Index(['isActive'])
 export class SmartContract {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'network_id', type: 'uuid', nullable: false })
-  networkId!: string;
+  @Column({ name: 'chain_id', type: 'integer', nullable: false })
+  chainId!: number;
 
   @Column({ name: 'contract_address', type: 'varchar', length: 42, nullable: false })
   contractAddress!: string;
@@ -58,7 +58,7 @@ export class SmartContract {
     nullable: false,
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'network_id' })
+  @JoinColumn({ name: 'chain_id' })
   network!: BlockchainNetwork;
 
   // Computed properties

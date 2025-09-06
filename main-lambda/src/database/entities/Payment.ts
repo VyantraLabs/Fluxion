@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   CreateDateColumn,
@@ -8,7 +8,9 @@ import {
   Index,
   JoinColumn,
   Check,
+  BeforeInsert,
 } from 'typeorm';
+import { ulid } from 'ulid';
 import { Organization } from './Organization';
 import { Invoice } from './Invoice';
 import { BlockchainNetwork } from './BlockchainNetwork';
@@ -17,10 +19,10 @@ import { Token } from './Token';
 export type PaymentStatus = 'pending' | 'confirmed' | 'failed';
 
 @Entity('payments')
-@Index(['txHash', 'networkId'], { unique: true })
+@Index(['txHash', 'chainId'], { unique: true })
 @Index(['organizationId'])
 @Index(['invoiceId'])
-@Index(['networkId'])
+@Index(['chainId'])
 @Index(['tokenId'])
 @Index(['status'])
 @Index(['fromAddress'])
@@ -29,23 +31,23 @@ export type PaymentStatus = 'pending' | 'confirmed' | 'failed';
 @Check('amount_positive', 'amount > 0')
 @Check('status_valid', "status IN ('pending', 'confirmed', 'failed')")
 export class Payment {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'varchar' })
   id!: string;
 
-  @Column({ name: 'organization_id', type: 'uuid', nullable: false })
+  @Column({ name: 'organization_id', type: 'varchar', nullable: false })
   organizationId!: string;
 
-  @Column({ name: 'invoice_id', type: 'uuid', nullable: true })
+  @Column({ name: 'invoice_id', type: 'varchar', nullable: true })
   invoiceId?: string;
 
   // Transaction details
   @Column({ name: 'tx_hash', type: 'varchar', length: 66, nullable: false })
   txHash!: string;
 
-  @Column({ name: 'network_id', type: 'uuid', nullable: false })
-  networkId!: string;
+  @Column({ name: 'chain_id', type: 'integer', nullable: false })
+  chainId!: number;
 
-  @Column({ name: 'token_id', type: 'uuid', nullable: false })
+  @Column({ name: 'token_id', type: 'varchar', nullable: false })
   tokenId!: string;
 
   // Payment details
@@ -123,7 +125,7 @@ export class Payment {
   @ManyToOne(() => BlockchainNetwork, network => network.payments, {
     nullable: false,
   })
-  @JoinColumn({ name: 'network_id' })
+  @JoinColumn({ name: 'chain_id' })
   network!: BlockchainNetwork;
 
   @ManyToOne(() => Token, token => token.payments, {
@@ -289,7 +291,7 @@ export class Payment {
       blockNumber?: string;
     },
     organizationId: string,
-    networkId: string,
+    chainId: number,
     tokenId: string,
     invoiceId?: string
   ): Partial<Payment> {
@@ -297,7 +299,7 @@ export class Payment {
       organizationId,
       invoiceId,
       txHash: transaction.hash,
-      networkId,
+      chainId,
       tokenId,
       fromAddress: transaction.from,
       toAddress: transaction.to,
@@ -308,5 +310,12 @@ export class Payment {
       status: transaction.blockNumber ? 'confirmed' : 'pending',
       confirmations: transaction.blockNumber ? 1 : 0,
     };
+  }
+
+  @BeforeInsert()
+  generateId(): void {
+    if (!this.id) {
+      this.id = ulid();
+    }
   }
 }

@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   OneToMany,
@@ -9,24 +9,26 @@ import {
   Index,
   JoinColumn,
   Check,
+  BeforeInsert,
 } from 'typeorm';
+import { ulid } from 'ulid';
 import { BlockchainNetwork } from './BlockchainNetwork';
 import { Invoice } from './Invoice';
 import { Payment } from './Payment';
 import { PayrollBatch } from './PayrollBatch';
 
 @Entity('tokens')
-@Index(['contractAddress', 'networkId'], { unique: true })
-@Index(['networkId'])
+@Index(['contractAddress', 'chainId'], { unique: true })
+@Index(['chainId'])
 @Index(['symbol'])
 @Index(['isActive'])
 @Check('native_address_check', '(is_native = true AND contract_address IS NULL) OR (is_native = false AND contract_address IS NOT NULL)')
 export class Token {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'varchar' })
   id!: string;
 
-  @Column({ name: 'network_id', type: 'uuid', nullable: false })
-  networkId!: string;
+  @Column({ name: 'chain_id', type: 'integer', nullable: false })
+  chainId!: number;
 
   @Column({ name: 'contract_address', type: 'varchar', length: 100, nullable: true })
   contractAddress?: string;
@@ -66,7 +68,7 @@ export class Token {
     nullable: false,
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'network_id' })
+  @JoinColumn({ name: 'chain_id' })
   network!: BlockchainNetwork;
 
   @OneToMany(() => Invoice, invoice => invoice.token)
@@ -202,5 +204,12 @@ export class Token {
 
   static validateDecimals(decimals: number): boolean {
     return Number.isInteger(decimals) && decimals >= 0 && decimals <= 77;
+  }
+
+  @BeforeInsert()
+  generateId(): void {
+    if (!this.id) {
+      this.id = ulid();
+    }
   }
 }

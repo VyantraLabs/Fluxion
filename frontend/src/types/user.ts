@@ -47,6 +47,13 @@ export interface AuthResponse {
   token: string;
   user: User;
   expires_at: DateString;
+  needsOnboarding: boolean;
+  isNewUser?: boolean; // Flag to indicate if this is a first-time user
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
 }
 
 // Profile update types (enhanced for new schema)
@@ -104,6 +111,8 @@ export interface UserContextState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  isOnboarding: boolean;
+  needsOnboarding: boolean;
 }
 
 export interface UserContextActions {
@@ -112,6 +121,7 @@ export interface UserContextActions {
   updateProfile: (updates: UpdateUserProfileRequest) => Promise<void>;
   refreshUser: () => Promise<void>;
   checkUserExists: (walletAddress: WalletAddress) => Promise<UserExistsResponse>;
+  completeOnboarding: (data: CompleteOnboardingRequest) => Promise<void>;
 }
 
 // Profile form types
@@ -142,6 +152,12 @@ export interface OnboardingState {
   completed_steps: string[];
   total_steps: number;
   is_complete: boolean;
+}
+
+export interface CompleteOnboardingRequest {
+  organizationName: string;
+  displayName?: string;
+  email?: string;
 }
 
 // User activity

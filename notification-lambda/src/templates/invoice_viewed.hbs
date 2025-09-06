@@ -1,0 +1,109 @@
+<h2>👁️ Invoice Viewed Notification</h2>
+
+<p>Good news! Your invoice has been viewed by the recipient.</p>
+
+<div class="success-box">
+    <p style="font-size: 18px; margin: 0; color: #22c55e;"><strong>✅ Invoice Activity Detected</strong></p>
+    <p style="margin: 10px 0 0 0;">{{clientName}} has opened and viewed your invoice.</p>
+</div>
+
+<div class="highlight-box">
+    <table class="info-table" style="margin: 0;">
+        <tr>
+            <th width="40%">Invoice Number</th>
+            <td><strong>{{invoiceNumber}}</strong></td>
+        </tr>
+        <tr>
+            <th>Amount</th>
+            <td><span class="amount">{{amount}} {{currency}}</span></td>
+        </tr>
+        <tr>
+            <th>Viewed By</th>
+            <td>{{clientName}}</td>
+        </tr>
+        <tr>
+            <th>Viewed At</th>
+            <td>{{viewedAt}}</td>
+        </tr>
+        <tr>
+            <th>Organization</th>
+            <td>{{organizationName}}</td>
+        </tr>
+        {{#if ipAddress}}
+        <tr>
+            <th>Location</th>
+            <td>{{ipAddress}}</td>
+        </tr>
+        {{/if}}
+    </table>
+</div>
+
+<p><strong>📊 What This Means:</strong></p>
+<ul>
+    <li>✅ <strong>Delivered Successfully:</strong> Your invoice reached the recipient</li>
+    <li>👀 <strong>Actively Viewed:</strong> The client has opened and reviewed the invoice</li>
+    <li>⏳ <strong>Awaiting Payment:</strong> The next step is payment processing</li>
+    <li>📈 <strong>Engagement Tracked:</strong> This activity is recorded in your dashboard</li>
+</ul>
+
+<div class="highlight-box">
+    <p><strong>💡 Next Steps Recommendations:</strong></p>
+    <ul>
+        <li><strong>Monitor Dashboard:</strong> Keep an eye on payment status updates</li>
+        <li><strong>Be Patient:</strong> Give the client time to process the payment</li>
+        <li><strong>Follow Up:</strong> Consider a gentle reminder if payment isn't made within a few days</li>
+        <li><strong>Stay Available:</strong> Be ready to answer any questions about the invoice</li>
+    </ul>
+</div>
+
+<div class="text-center mt-20 mb-20">
+    <a href="https://fluxion.pay/dashboard" class="cta-button">📊 View Dashboard</a>
+</div>
+
+<p><strong>🎯 Improve Payment Success:</strong></p>
+<ul>
+    <li><strong>Clear Instructions:</strong> Ensure payment instructions are clear and easy to follow</li>
+    <li><strong>Help Resources:</strong> Consider sharing crypto payment guides with first-time users</li>
+    <li><strong>Quick Response:</strong> Be available to help if they have questions</li>
+    <li><strong>Payment Reminders:</strong> Set up automated reminders for due dates</li>
+</ul>
+
+<div class="highlight-box">
+    <p><strong>📧 Client Communication Tips:</strong></p>
+    <p>Since your client has viewed the invoice, this might be a good time to:</p>
+    <ul>
+        <li>Send a friendly follow-up message</li>
+        <li>Offer assistance with the payment process</li>
+        <li>Share helpful resources about crypto payments</li>
+        <li>Confirm they have everything they need to pay</li>
+    </ul>
+</div>
+
+<div class="text-center mt-20">
+    <a href="https://fluxion.pay/invoices/{{invoiceId}}" class="secondary-button">📄 View Invoice Details</a>
+    <a href="https://fluxion.pay/analytics" class="secondary-button">📈 View Analytics</a>
+</div>
+
+{{#if userAgent}}
+<div class="highlight-box" style="background-color: #f8fafc;">
+    <p><strong>📱 Technical Details:</strong></p>
+    <p style="font-size: 12px; color: #6b7280; margin: 0;">
+        <strong>Browser/Device:</strong> {{userAgent}}<br>
+        {{#if ipAddress}}<strong>IP Address:</strong> {{ipAddress}}{{/if}}
+    </p>
+</div>
+{{/if}}
+
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+<p style="font-size: 14px; color: #6b7280;">
+    <strong>Invoice ID:</strong> {{invoiceId}}<br>
+    <strong>Organization:</strong> {{organizationName}}<br>
+    <strong>Activity Type:</strong> Invoice Viewed<br>
+    <strong>Tracking:</strong> Automated notification system
+</p>
+
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+    <strong>Privacy Note:</strong> View notifications help you track engagement and improve payment success rates. 
+    Only basic viewing activity is tracked - no personal data is collected beyond what's necessary for payment processing.
+</p>

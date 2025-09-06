@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   OneToMany,
@@ -10,12 +10,18 @@ import {
   Index,
   JoinColumn,
   Check,
+  BeforeInsert,
 } from 'typeorm';
+import { ulid } from 'ulid';
 import { Organization } from './Organization';
 import { User } from './User';
 import { BlockchainNetwork } from './BlockchainNetwork';
 import { Token } from './Token';
 import { Payment } from './Payment';
+import { InvoiceTemplate } from './InvoiceTemplate';
+import { InvoiceAccessToken } from './InvoiceAccessToken';
+import { NotificationQueue } from './NotificationQueue';
+import { PaymentVerificationJob } from './PaymentVerificationJob';
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'partial';
 
@@ -23,7 +29,7 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' 
 @Index(['invoiceNumber', 'organizationId'], { unique: true })
 @Index(['organizationId'])
 @Index(['createdBy'])
-@Index(['networkId'])
+@Index(['chainId'])
 @Index(['tokenId'])
 @Index(['status'])
 @Index(['dueDate'])
@@ -32,13 +38,13 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' 
 @Check('client_wallet_format', "client_wallet ~* '^0x[a-fA-F0-9]{40}$' OR client_wallet IS NULL")
 @Check('status_valid', "status IN ('draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial')")
 export class Invoice {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'varchar' })
   id!: string;
 
-  @Column({ name: 'organization_id', type: 'uuid', nullable: false })
+  @Column({ name: 'organization_id', type: 'varchar', nullable: false })
   organizationId!: string;
 
-  @Column({ name: 'created_by', type: 'uuid', nullable: false })
+  @Column({ name: 'created_by', type: 'varchar', nullable: false })
   createdBy!: string;
 
   @Column({ name: 'invoice_number', type: 'varchar', length: 50, nullable: false })
@@ -65,10 +71,10 @@ export class Invoice {
   clientWallet?: string;
 
   // Payment details
-  @Column({ name: 'network_id', type: 'uuid', nullable: false })
-  networkId!: string;
+  @Column({ name: 'chain_id', type: 'integer', nullable: false })
+  chainId!: number;
 
-  @Column({ name: 'token_id', type: 'uuid', nullable: false })
+  @Column({ name: 'token_id', type: 'varchar', nullable: false })
   tokenId!: string;
 
   @Column({ type: 'decimal', precision: 36, scale: 18, nullable: false })
@@ -76,6 +82,10 @@ export class Invoice {
 
   @Column({ name: 'amount_paid', type: 'decimal', precision: 36, scale: 18, default: '0' })
   amountPaid!: string;
+
+  // Template reference
+  @Column({ name: 'template_id', type: 'varchar', nullable: true })
+  templateId?: string;
 
   // Status and metadata
   @Column({
@@ -97,7 +107,47 @@ export class Invoice {
     remindersSent?: number;
     customFields?: Record<string, any>;
     cancellationReason?: string;
+    // Template-related data
+    templateData?: Record<string, any>;
+    branding?: {
+      logo?: string;
+      primaryColor?: string;
+      companyName?: string;
+      companyAddress?: string;
+      companyPhone?: string;
+      companyEmail?: string;
+    };
+    paymentInstructions?: string;
+    terms?: string;
+    footer?: string;
+    // Client access and notifications
+    clientAccessToken?: string;
+    notificationPreferences?: {
+      sendReminders?: boolean;
+      reminderIntervals?: number[];
+    };
   };
+
+  // Client settings and access control
+  @Column({ name: 'client_settings', type: 'jsonb', default: {}, nullable: false })
+  clientSettings!: {
+    accessTokenEnabled?: boolean;
+    notificationsEnabled?: boolean;
+    lastNotificationSent?: string;
+    remindersSent?: number;
+    viewCount?: number;
+    lastViewedAt?: string;
+    allowPartialPayments?: boolean;
+    requireClientEmail?: boolean;
+    customMessage?: string;
+  };
+
+  // QR Code and mobile payment
+  @Column({ name: 'qr_code_data', type: 'text', nullable: true })
+  qrCodeData?: string;
+
+  @Column({ name: 'mobile_payment_url', type: 'text', nullable: true })
+  mobilePaymentUrl?: string;
 
   // Timestamps
   @Column({ name: 'sent_at', type: 'timestamptz', nullable: true })
@@ -132,7 +182,7 @@ export class Invoice {
   @ManyToOne(() => BlockchainNetwork, network => network.invoices, {
     nullable: false,
   })
-  @JoinColumn({ name: 'network_id' })
+  @JoinColumn({ name: 'chain_id' })
   network!: BlockchainNetwork;
 
   @ManyToOne(() => Token, token => token.invoices, {
@@ -143,6 +193,20 @@ export class Invoice {
 
   @OneToMany(() => Payment, payment => payment.invoice, { cascade: true })
   payments!: Payment[];
+
+  // New relations
+  @ManyToOne(() => InvoiceTemplate, template => template.invoices, { nullable: true })
+  @JoinColumn({ name: 'template_id' })
+  template?: InvoiceTemplate;
+
+  @OneToMany(() => InvoiceAccessToken, token => token.invoice, { cascade: true })
+  accessTokens!: InvoiceAccessToken[];
+
+  @OneToMany(() => NotificationQueue, notification => notification.invoiceId)
+  notifications!: NotificationQueue[];
+
+  @OneToMany(() => PaymentVerificationJob, job => job.invoice, { cascade: true })
+  verificationJobs!: PaymentVerificationJob[];
 
   // Computed properties
   get displayAmount(): string {
@@ -166,7 +230,8 @@ export class Invoice {
     if (!this.dueDate || this.status === 'paid' || this.status === 'cancelled') {
       return false;
     }
-    return new Date() > this.dueDate;
+    const dueDate = this.dueDate instanceof Date ? this.dueDate : new Date(this.dueDate);
+    return new Date() > dueDate;
   }
 
   get isPaid(): boolean {
@@ -184,12 +249,61 @@ export class Invoice {
   get daysUntilDue(): number | null {
     if (!this.dueDate) return null;
     const today = new Date();
-    const timeDiff = this.dueDate.getTime() - today.getTime();
+    const dueDate = this.dueDate instanceof Date ? this.dueDate : new Date(this.dueDate);
+    const timeDiff = dueDate.getTime() - today.getTime();
     return Math.ceil(timeDiff / (1000 * 3600 * 24));
   }
 
   get clientDisplayName(): string {
     return this.clientName || this.clientEmail || this.clientWallet || 'Unknown Client';
+  }
+
+  get hasTemplate(): boolean {
+    return !!this.templateId;
+  }
+
+  get hasAccessTokens(): boolean {
+    return this.accessTokens?.length > 0;
+  }
+
+  get activeAccessTokens(): InvoiceAccessToken[] {
+    return this.accessTokens?.filter(token => token.isValid) || [];
+  }
+
+  get hasActiveAccessToken(): boolean {
+    return this.activeAccessTokens.length > 0;
+  }
+
+  get pendingVerificationJobs(): PaymentVerificationJob[] {
+    return this.verificationJobs?.filter(job => job.isPending) || [];
+  }
+
+  get completedVerificationJobs(): PaymentVerificationJob[] {
+    return this.verificationJobs?.filter(job => job.isCompleted) || [];
+  }
+
+  get hasQRCode(): boolean {
+    return !!this.qrCodeData;
+  }
+
+  get allowsPartialPayments(): boolean {
+    return this.clientSettings?.allowPartialPayments ?? true;
+  }
+
+  get requiresClientEmail(): boolean {
+    return this.clientSettings?.requireClientEmail ?? false;
+  }
+
+  get notificationsEnabled(): boolean {
+    return this.clientSettings?.notificationsEnabled ?? true;
+  }
+
+  get viewCount(): number {
+    return this.clientSettings?.viewCount || 0;
+  }
+
+  get remindersSent(): number {
+    return this.clientSettings?.remindersSent || 0;
   }
 
   // Methods
@@ -207,6 +321,21 @@ export class Invoice {
       paymentProgress: this.paymentProgress,
       daysUntilDue: this.daysUntilDue,
       clientDisplayName: this.clientDisplayName,
+      // New computed properties
+      hasTemplate: this.hasTemplate,
+      hasAccessTokens: this.hasAccessTokens,
+      hasActiveAccessToken: this.hasActiveAccessToken,
+      hasQRCode: this.hasQRCode,
+      allowsPartialPayments: this.allowsPartialPayments,
+      requiresClientEmail: this.requiresClientEmail,
+      notificationsEnabled: this.notificationsEnabled,
+      viewCount: this.viewCount,
+      remindersSent: this.remindersSent,
+      // Relations counts
+      accessTokensCount: this.accessTokens?.length || 0,
+      activeAccessTokensCount: this.activeAccessTokens.length,
+      verificationJobsCount: this.verificationJobs?.length || 0,
+      pendingVerificationJobsCount: this.pendingVerificationJobs.length,
     };
   }
 
@@ -245,6 +374,99 @@ export class Invoice {
     }
   }
 
+  // New methods for enhanced functionality
+  recordView(): void {
+    this.clientSettings = {
+      ...this.clientSettings,
+      viewCount: (this.clientSettings?.viewCount || 0) + 1,
+      lastViewedAt: new Date().toISOString(),
+    };
+  }
+
+  incrementRemindersSent(): void {
+    this.clientSettings = {
+      ...this.clientSettings,
+      remindersSent: (this.clientSettings?.remindersSent || 0) + 1,
+      lastNotificationSent: new Date().toISOString(),
+    };
+  }
+
+  setQRCodeData(qrData: string): void {
+    this.qrCodeData = qrData;
+  }
+
+  setMobilePaymentUrl(url: string): void {
+    this.mobilePaymentUrl = url;
+  }
+
+  enableClientAccess(): void {
+    this.clientSettings = {
+      ...this.clientSettings,
+      accessTokenEnabled: true,
+    };
+  }
+
+  disableClientAccess(): void {
+    this.clientSettings = {
+      ...this.clientSettings,
+      accessTokenEnabled: false,
+    };
+  }
+
+  setCustomMessage(message: string): void {
+    this.clientSettings = {
+      ...this.clientSettings,
+      customMessage: message,
+    };
+  }
+
+  applyTemplateData(template: InvoiceTemplate): void {
+    this.templateId = template.id;
+    
+    // Apply template defaults
+    if (template.defaultTitle && !this.title) {
+      this.title = template.defaultTitle;
+    }
+    if (template.defaultDescription && !this.description) {
+      this.description = template.defaultDescription;
+    }
+    if (template.defaultChainId && !this.chainId) {
+      this.chainId = template.defaultChainId;
+    }
+    if (template.defaultTokenId && !this.tokenId) {
+      this.tokenId = template.defaultTokenId;
+    }
+
+    // Apply template configuration
+    this.metadata = {
+      ...this.metadata,
+      templateData: template.configuration.customFields || {},
+      branding: template.configuration.branding,
+      paymentInstructions: template.configuration.paymentInstructions,
+      terms: template.configuration.terms,
+    };
+
+    this.clientSettings = {
+      ...this.clientSettings,
+      allowPartialPayments: template.configuration.allowPartialPayments ?? true,
+      requireClientEmail: template.configuration.requireClientEmail ?? false,
+      notificationsEnabled: template.configuration.autoReminders ?? true,
+    };
+
+    if (template.configuration.autoReminders && template.configuration.reminderIntervals) {
+      this.metadata = {
+        ...this.metadata,
+        notificationPreferences: {
+          sendReminders: true,
+          reminderIntervals: template.configuration.reminderIntervals,
+        },
+      };
+    }
+
+    // Increment template usage
+    template.incrementUsage();
+  }
+
   // Static methods
   static generateInvoiceNumber(organizationSlug: string, sequence: number): string {
     const year = new Date().getFullYear();
@@ -273,5 +495,12 @@ export class Invoice {
 
   static validateStatus(status: string): status is InvoiceStatus {
     return ['draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial'].includes(status);
+  }
+
+  @BeforeInsert()
+  generateId(): void {
+    if (!this.id) {
+      this.id = ulid();
+    }
   }
 }

@@ -1,14 +1,27 @@
 import { z } from 'zod';
 import { FluxionRecord, PaymentData } from './common';
 
+// ID validation - accepts both UUIDs and ULIDs for backward compatibility
+const idSchema = z.string()
+  .refine(
+    (val) => {
+      // Check if it's a valid UUID (36 chars with hyphens)
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+      // Check if it's a valid ULID (26 chars alphanumeric)
+      const isUlid = /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(val);
+      return isUuid || isUlid;
+    },
+    'Invalid ID format - must be either UUID or ULID'
+  );
+
 export const VerifyPaymentSchema = z.object({
-  invoice_id: z.string().uuid('Invalid invoice ID'),
+  invoice_id: idSchema,
   tx_hash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash'),
   from_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid from address')
 });
 
 export const GetPaymentsQuerySchema = z.object({
-  invoice_id: z.string().uuid('Invalid invoice ID').optional(),
+  invoice_id: idSchema.optional(),
   limit: z.string().transform(val => parseInt(val)).refine(val => val > 0 && val <= 100, 'Limit must be between 1 and 100').optional(),
   nextToken: z.string().optional()
 });

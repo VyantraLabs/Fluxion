@@ -1,5 +1,3 @@
-import { NetworkInfo, POLYGON_MAINNET, POLYGON_MUMBAI } from '@/types/web3';
-
 // Environment configuration
 export const config = {
   // API Configuration
@@ -19,35 +17,11 @@ export const config = {
   isDevelopment: process.env.NEXT_PUBLIC_ENV === 'development',
   isProduction: process.env.NEXT_PUBLIC_ENV === 'production',
   
-  // Blockchain Configuration
+  // Blockchain Configuration (minimal, use ConfigContext for dynamic data)
   blockchain: {
     defaultChainId: parseInt(process.env.NEXT_PUBLIC_DEFAULT_CHAIN_ID || '137'),
-    networks: {
-      polygon: POLYGON_MAINNET,
-      mumbai: POLYGON_MUMBAI,
-    } as Record<string, NetworkInfo>,
-    rpcUrls: {
-      137: process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com',
-      80001: process.env.NEXT_PUBLIC_POLYGON_MUMBAI_RPC_URL || 'https://rpc-mumbai.maticvigil.com',
-    },
-  },
-  
-  // USDC Contract Configuration
-  usdc: {
-    contracts: {
-      137: {
-        address: process.env.NEXT_PUBLIC_USDC_POLYGON || '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
-        decimals: 6,
-        symbol: 'USDC',
-        name: 'USD Coin',
-      },
-      80001: {
-        address: process.env.NEXT_PUBLIC_USDC_MUMBAI || '0x9999f7fea5938fd3b1e26a12c3f2fb024e194f97',
-        decimals: 6,
-        symbol: 'USDC',
-        name: 'USD Coin (Test)',
-      },
-    },
+    // NOTE: Networks and tokens are now loaded dynamically from /config/networks API
+    // Use ConfigContext hooks instead of hardcoded values
   },
   
   // External APIs
@@ -134,37 +108,33 @@ export const config = {
   },
 } as const;
 
-// Helper functions (legacy - prefer using ConfigContext hooks)
-export const getNetworkById = (chainId: number): NetworkInfo | undefined => {
-  return Object.values(config.blockchain.networks).find(
-    (network) => network.chainId === chainId
-  );
+// Helper functions (DEPRECATED - use ConfigContext hooks instead)
+// These functions are kept for backward compatibility but should not be used in new code
+export const getNetworkById = (chainId: number) => {
+  console.warn('getNetworkById is deprecated. Use useNetworkById from ConfigContext instead.');
+  return undefined;
 };
 
 export const getUSDCContract = (chainId: number) => {
-  return config.usdc.contracts[chainId as keyof typeof config.usdc.contracts];
+  console.warn('getUSDCContract is deprecated. Use useTokensByChainId and filter for stablecoins instead.');
+  return undefined;
 };
 
 export const getRpcUrl = (chainId: number): string => {
-  const rpcUrl = config.blockchain.rpcUrls[chainId as keyof typeof config.blockchain.rpcUrls];
-  
-  // Fallback to public RPC if not configured
-  if (!rpcUrl) {
-    switch (chainId) {
-      case 137:
-        return 'https://polygon-rpc.com';
-      case 80001:
-        return 'https://rpc-mumbai.maticvigil.com';
-      default:
-        throw new Error(`Unsupported chain ID: ${chainId}`);
-    }
+  console.warn('getRpcUrl is deprecated. Use ConfigContext to get network RPC URLs.');
+  // Fallback to public RPC for compatibility
+  switch (chainId) {
+    case 137:
+      return 'https://polygon-rpc.com';
+    case 80001:
+      return 'https://rpc-mumbai.maticvigil.com';
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}. Use ConfigContext for dynamic network support.`);
   }
-  
-  return rpcUrl;
 };
 
 // Dynamic configuration helpers (use these with ConfigContext)
-export const createNetworkInfo = (networkConfig: import('@/types/config').NetworkConfig): NetworkInfo => {
+export const createNetworkInfo = (networkConfig: import('@/types/config').NetworkConfig): import('@/types/web3').NetworkInfo => {
   return {
     chainId: networkConfig.chainId,
     name: networkConfig.name,
@@ -173,7 +143,7 @@ export const createNetworkInfo = (networkConfig: import('@/types/config').Networ
       symbol: networkConfig.symbol,
       decimals: 18, // Default for most native tokens
     },
-    rpcUrls: [networkConfig.rpcUrl || getRpcUrl(networkConfig.chainId)], // Fallback to static config
+    rpcUrls: [networkConfig.rpcUrl || `https://rpc-${networkConfig.chainId}.fluxion.pay`],
     blockExplorerUrls: networkConfig.explorerUrl ? [networkConfig.explorerUrl] : [],
     iconUrls: [],
   };
@@ -190,10 +160,14 @@ export const getTokenInfoFromConfig = (tokenConfig: import('@/types/config').Tok
 };
 
 export const isMainnet = (chainId: number): boolean => {
+  console.warn('isMainnet is deprecated. Use ConfigContext to get network information.');
+  // Fallback logic for backward compatibility
   return chainId === 137; // Polygon mainnet
 };
 
 export const isTestnet = (chainId: number): boolean => {
+  console.warn('isTestnet is deprecated. Use ConfigContext to get network information.');
+  // Fallback logic for backward compatibility
   return chainId === 80001; // Polygon Mumbai testnet
 };
 
@@ -207,13 +181,21 @@ export const apiEndpoints = {
   auth: {
     message: '/users/auth/message',
     verify: '/users/auth/verify',
+    create: '/users/auth/create',
   },
   
-  // Users
+  // Users (Authentication endpoints - no auth required)
   users: {
     exists: (wallet: string) => `/users/exists/${wallet}`,
-    profile: (wallet: string) => `/users/profile/${wallet}`,
     validateAddress: '/users/validate-address',
+    platformStats: '/users/platform/stats',
+  },
+  
+  // User (Authenticated endpoints - require auth, no wallet parameter)
+  user: {
+    profile: '/user/profile',
+    stats: '/user/stats',
+    completeOnboarding: '/users/onboarding/complete',
   },
   
   // Invoices
@@ -222,7 +204,7 @@ export const apiEndpoints = {
     byId: (id: string) => `/invoices/${id}`,
     public: (id: string) => `/invoices/${id}/public`,
     send: (id: string) => `/invoices/${id}/send`,
-    user: (wallet: string) => `/invoices/user/${wallet}`,
+    stats: '/invoices/stats',
   },
   
   // Payments
@@ -235,7 +217,6 @@ export const apiEndpoints = {
   // Analytics
   analytics: {
     platform: '/analytics/platform',
-    user: (wallet: string) => `/analytics/user/${wallet}`,
   },
 
   // Configuration

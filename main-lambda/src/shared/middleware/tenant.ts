@@ -15,7 +15,7 @@ const logger = new Logger('TenantMiddleware');
 export const extractTenantContext = () => {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
-      let tenantId: string = 'default';
+      let tenantId: string = '01HBXYZ0000000000000000000'; // Default tenant ULID (matches user service)
       let userId: string | undefined;
       let walletAddress: string | undefined;
 
@@ -27,7 +27,7 @@ export const extractTenantContext = () => {
           const decoded = jwt.decode(token) as any;
           
           if (decoded) {
-            tenantId = decoded.tenant_id || 'default';
+            tenantId = decoded.tenant_id || '01HBXYZ0000000000000000000'; // Default tenant ULID
             userId = decoded.user_id;
             walletAddress = decoded.wallet_address;
           }
@@ -45,6 +45,11 @@ export const extractTenantContext = () => {
 
       // Validate tenant ID format
       if (!isValidTenantId(tenantId)) {
+        logger.error('Invalid tenant ID format detected', { 
+          tenantId, 
+          length: tenantId.length,
+          format: typeof tenantId 
+        });
         throw new FluxionError(
           ErrorCodes.VALIDATION_ERROR,
           'Invalid tenant ID format',
@@ -131,7 +136,7 @@ export const validateTenantAccess = () => {
     
     if (!isValidAccess) {
       logger.warn('Tenant access denied', { 
-        userId: req.user?.wallet_address,
+        userId: req.context?.userId || 'none',
         tenantId: tenantContext.tenantId 
       });
       
@@ -144,7 +149,7 @@ export const validateTenantAccess = () => {
     }
 
     logger.debug('Tenant access validated', { 
-      userId: req.user?.wallet_address,
+      userId: req.context?.userId || 'none',
       tenantId: tenantContext.tenantId 
     });
 
@@ -259,9 +264,15 @@ export const parseTenantScopedId = (scopedId: string): { tenantId: string; resou
  * Validate tenant ID format
  */
 function isValidTenantId(tenantId: string): boolean {
-  // Tenant ID should be alphanumeric with underscores/hyphens, 3-50 characters
-  const tenantIdRegex = /^[a-zA-Z0-9_-]{3,50}$/;
-  return tenantIdRegex.test(tenantId);
+  // Support multiple tenant ID formats:
+  // 1. Standard UUID format (for organization IDs)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // 2. ULID format (legacy)
+  const ulidRegex = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+  // 3. Alphanumeric format (legacy)
+  const alphanumericRegex = /^[a-zA-Z0-9_-]{3,50}$/;
+  
+  return uuidRegex.test(tenantId) || ulidRegex.test(tenantId) || alphanumericRegex.test(tenantId);
 }
 
 /**
@@ -320,12 +331,12 @@ export const developmentTenant = () => {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (process.env.NODE_ENV === 'development' && !req.tenant) {
       req.tenant = {
-        tenantId: 'dev-tenant',
+        tenantId: '01HBXYZ0000000000000000000', // Default tenant ULID for development (matches user service)
         userId: undefined,
         walletAddress: undefined
       };
       
-      logger.debug('Development tenant context set', { tenantId: 'dev-tenant' });
+      logger.debug('Development tenant context set', { tenantId: '01HBXYZ0000000000000000000' });
     }
     
     next();

@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { config, apiEndpoints } from './config';
 import { ApiResponse, PaginatedResponse, ErrorCodes, TenantContext } from '@/types/common';
+import { authStorage } from './storage';
 
 // Create axios instance
 const createApiClient = (): AxiosInstance => {
@@ -115,13 +116,14 @@ const generateRequestId = (): string => {
 
 const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('fluxion_auth_token');
+  return authStorage.getToken();
 };
 
 const handleAuthError = (): void => {
-  // Clear stored auth token
+  // Clear stored auth token using proper storage utilities
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('fluxion_auth_token');
+    authStorage.removeToken();
+    // Keep the legacy localStorage removal for backward compatibility
     localStorage.removeItem('fluxion_user');
   }
 
@@ -212,23 +214,55 @@ export const authApi = {
       signature,
       message,
     }),
+
+  createUser: (
+    walletAddress: string, 
+    signature: string, 
+    message: string,
+    organizationName: string,
+    displayName?: string,
+    email?: string
+  ) =>
+    apiRequest.post(apiEndpoints.auth.create, {
+      wallet_address: walletAddress,
+      signature,
+      message,
+      organizationName,
+      displayName,
+      email,
+    }),
 };
 
 export const userApi = {
+  // Public user endpoints (no auth required)
   exists: (wallet: string) =>
     apiRequest.get(apiEndpoints.users.exists(wallet)),
 
-  getProfile: (wallet: string) =>
-    apiRequest.get(apiEndpoints.users.profile(wallet)),
-
-  updateProfile: (wallet: string, data: any) =>
-    apiRequest.put(apiEndpoints.users.profile(wallet), data),
-
-  deleteProfile: (wallet: string) =>
-    apiRequest.delete(apiEndpoints.users.profile(wallet)),
+  // Alias for backwards compatibility
+  checkUserExists: (wallet: string) =>
+    apiRequest.get(apiEndpoints.users.exists(wallet)),
 
   validateAddress: (walletAddress: string) =>
     apiRequest.post(apiEndpoints.users.validateAddress, { wallet_address: walletAddress }),
+
+  getPlatformStats: () =>
+    apiRequest.get(apiEndpoints.users.platformStats),
+
+  // Authenticated user endpoints (auth required, no wallet parameter)
+  getProfile: () =>
+    apiRequest.get(apiEndpoints.user.profile),
+
+  updateProfile: (data: any) =>
+    apiRequest.put(apiEndpoints.user.profile, data),
+
+  deleteProfile: () =>
+    apiRequest.delete(apiEndpoints.user.profile),
+
+  getStats: () =>
+    apiRequest.get(apiEndpoints.user.stats),
+
+  completeOnboarding: (data: { organizationName: string; displayName?: string; email?: string }) =>
+    apiRequest.post(apiEndpoints.user.completeOnboarding, data),
 };
 
 export const invoiceApi = {
@@ -250,14 +284,14 @@ export const invoiceApi = {
   send: (id: string) =>
     apiRequest.post(apiEndpoints.invoices.send(id)),
 
-  getUserInvoices: (
-    wallet: string,
-    params?: {
-      limit?: number;
-      nextToken?: string;
-      status?: string;
-    }
-  ) => apiRequest.get(apiEndpoints.invoices.user(wallet), params),
+  getUserInvoices: (params?: {
+    limit?: number;
+    nextToken?: string;
+    status?: string;
+  }) => apiRequest.get(apiEndpoints.invoices.base, params),
+
+  getStats: () =>
+    apiRequest.get(apiEndpoints.invoices.stats),
 };
 
 export const paymentApi = {
@@ -278,21 +312,132 @@ export const paymentApi = {
 export const analyticsApi = {
   getPlatform: () =>
     apiRequest.get(apiEndpoints.analytics.platform),
+};
 
-  getUser: (wallet: string) =>
-    apiRequest.get(apiEndpoints.analytics.user(wallet)),
+// Template API
+export const templateApi = {
+  // Template CRUD
+  create: (data: any) =>
+    apiRequest.post('/api/templates', data),
+
+  getById: (id: string) =>
+    apiRequest.get(`/api/templates/${id}`),
+
+  update: (id: string, data: any) =>
+    apiRequest.put(`/api/templates/${id}`, data),
+
+  delete: (id: string) =>
+    apiRequest.delete(`/api/templates/${id}`),
+
+  // Template listing
+  getAll: (params?: {
+    category?: string;
+    isPublic?: boolean;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => apiRequest.get('/api/templates', params),
+
+  getPublic: (params?: {
+    category?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => apiRequest.get('/api/templates/public', params),
+
+  getCategories: () =>
+    apiRequest.get('/api/templates/categories'),
+
+  // Template analytics
+  getAnalytics: (id: string) =>
+    apiRequest.get(`/api/templates/${id}/analytics`),
+
+  // Template usage
+  incrementUsage: (id: string) =>
+    apiRequest.post(`/api/templates/${id}/use`),
+};
+
+// Session storage utilities for configuration caching
+const SESSION_STORAGE_KEYS = {
+  NETWORKS: 'fluxion_networks_cache',
+  TOKENS: 'fluxion_tokens_cache',
+  CONFIG_SUMMARY: 'fluxion_config_summary',
+  CONFIG_TIMESTAMP: 'fluxion_config_timestamp'
+};
+
+// Cache duration in milliseconds (15 minutes)
+const CACHE_DURATION = 15 * 60 * 1000;
+
+const sessionCache = {
+  set: (key: string, data: any) => {
+    try {
+      const cacheEntry = {
+        data,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem(key, JSON.stringify(cacheEntry));
+    } catch (error) {
+      console.warn('Failed to cache data in session storage:', error);
+    }
+  },
+  
+  get: (key: string) => {
+    try {
+      const cached = sessionStorage.getItem(key);
+      if (!cached) return null;
+      
+      const cacheEntry = JSON.parse(cached);
+      const isExpired = Date.now() - cacheEntry.timestamp > CACHE_DURATION;
+      
+      if (isExpired) {
+        sessionStorage.removeItem(key);
+        return null;
+      }
+      
+      return cacheEntry.data;
+    } catch (error) {
+      console.warn('Failed to retrieve cached data from session storage:', error);
+      return null;
+    }
+  },
+  
+  clear: (key?: string) => {
+    try {
+      if (key) {
+        sessionStorage.removeItem(key);
+      } else {
+        // Clear all fluxion cache keys
+        Object.values(SESSION_STORAGE_KEYS).forEach(k => sessionStorage.removeItem(k));
+      }
+    } catch (error) {
+      console.warn('Failed to clear session storage:', error);
+    }
+  }
 };
 
 // Configuration API
 export const configApi = {
   // Get all blockchain networks
-  getNetworks: (params?: {
+  getNetworks: async (params?: {
     active?: boolean;
     testnet?: boolean;
     chainIds?: number[];
     symbols?: string[];
     includeTokens?: boolean;
   }) => {
+    // Generate cache key based on parameters
+    const cacheKey = `${SESSION_STORAGE_KEYS.NETWORKS}_${JSON.stringify(params || {})}`;
+    
+    // Try to get from cache first
+    if (typeof window !== 'undefined') {
+      const cached = sessionCache.get(cacheKey);
+      if (cached) {
+        console.log('Using cached networks data');
+        return cached;
+      }
+    }
+    
+    // If not cached, fetch from API
     const queryParams: Record<string, string> = {};
     
     if (params?.active !== undefined) {
@@ -311,7 +456,15 @@ export const configApi = {
       queryParams.includeTokens = params.includeTokens.toString();
     }
 
-    return apiRequest.get(apiEndpoints.config.networks, queryParams);
+    const response = await apiRequest.get(apiEndpoints.config.networks, queryParams);
+    
+    // Cache the response for future use
+    if (typeof window !== 'undefined') {
+      sessionCache.set(cacheKey, response);
+      console.log('Networks data cached');
+    }
+    
+    return response;
   },
 
   // Get specific network by chain ID
@@ -319,7 +472,7 @@ export const configApi = {
     apiRequest.get(apiEndpoints.config.networkByChainId(chainId)),
 
   // Get all tokens
-  getTokens: (params?: {
+  getTokens: async (params?: {
     active?: boolean;
     stablecoin?: boolean;
     native?: boolean;
@@ -328,6 +481,19 @@ export const configApi = {
     symbols?: string[];
     includeNetwork?: boolean;
   }) => {
+    // Generate cache key based on parameters
+    const cacheKey = `${SESSION_STORAGE_KEYS.TOKENS}_${JSON.stringify(params || {})}`;
+    
+    // Try to get from cache first
+    if (typeof window !== 'undefined') {
+      const cached = sessionCache.get(cacheKey);
+      if (cached) {
+        console.log('Using cached tokens data');
+        return cached;
+      }
+    }
+    
+    // If not cached, fetch from API
     const queryParams: Record<string, string> = {};
     
     if (params?.active !== undefined) {
@@ -352,7 +518,15 @@ export const configApi = {
       queryParams.includeNetwork = params.includeNetwork.toString();
     }
 
-    return apiRequest.get(apiEndpoints.config.tokens, queryParams);
+    const response = await apiRequest.get(apiEndpoints.config.tokens, queryParams);
+    
+    // Cache the response for future use
+    if (typeof window !== 'undefined') {
+      sessionCache.set(cacheKey, response);
+      console.log('Tokens data cached');
+    }
+    
+    return response;
   },
 
   // Get tokens for specific network
@@ -385,8 +559,29 @@ export const configApi = {
     apiRequest.get(apiEndpoints.config.appConfig),
 
   // Get lightweight configuration summary for frontend bootstrap
-  getSummary: () =>
-    apiRequest.get(apiEndpoints.config.summary),
+  getSummary: async () => {
+    const cacheKey = SESSION_STORAGE_KEYS.CONFIG_SUMMARY;
+    
+    // Try to get from cache first
+    if (typeof window !== 'undefined') {
+      const cached = sessionCache.get(cacheKey);
+      if (cached) {
+        console.log('Using cached summary data');
+        return cached;
+      }
+    }
+    
+    // If not cached, fetch from API
+    const response = await apiRequest.get(apiEndpoints.config.summary);
+    
+    // Cache the response for future use
+    if (typeof window !== 'undefined') {
+      sessionCache.set(cacheKey, response);
+      console.log('Summary data cached');
+    }
+    
+    return response;
+  },
 
   // Validate network support
   validateNetwork: (chainId: number) =>
@@ -395,6 +590,14 @@ export const configApi = {
   // Get configuration health status
   getHealth: () =>
     apiRequest.get(apiEndpoints.config.health),
+    
+  // Clear all cached configuration data
+  clearCache: () => {
+    if (typeof window !== 'undefined') {
+      sessionCache.clear();
+      console.log('All configuration cache cleared');
+    }
+  }
 };
 
 // Utility functions for handling API responses
@@ -538,3 +741,6 @@ export const createWebSocketConnection = (
 
   return ws;
 };
+
+// Export session cache utilities for external use
+export { sessionCache, SESSION_STORAGE_KEYS };

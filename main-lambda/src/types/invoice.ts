@@ -1,8 +1,21 @@
 import { z } from 'zod';
 import { FluxionRecord, InvoiceData, LineItem } from './common';
 
+// ID validation - accepts both UUIDs and ULIDs for backward compatibility
+const idSchema = z.string()
+  .refine(
+    (val) => {
+      // Check if it's a valid UUID (36 chars with hyphens)
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+      // Check if it's a valid ULID (26 chars alphanumeric)
+      const isUlid = /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(val);
+      return isUuid || isUlid;
+    },
+    'Invalid ID format - must be either UUID or ULID'
+  );
+
 export const LineItemSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: idSchema.optional(),
   description: z.string().min(1, 'Description is required').max(200),
   quantity: z.number().min(0.01, 'Quantity must be greater than 0').max(1000000),
   rate: z.number().min(0.01, 'Rate must be greater than 0').max(1000000),

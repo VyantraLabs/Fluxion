@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { AppDataSource } from '../data-source';
 import { BlockchainNetwork } from '../entities/BlockchainNetwork';
 import { Token } from '../entities/Token';
-import { Organization } from '../entities/Organization';
 import { Logger } from '@/shared/utils/logger';
 
 const logger = new Logger('DatabaseSeeder');
@@ -574,9 +573,9 @@ async function seedBlockchainNetworks(): Promise<void> {
       });
 
       network = await networkRepository.save(network);
-      logger.info(`Created network: ${network.name} (ID: ${network.id})`);
+      logger.info(`Created network: ${network.name} (Chain ID: ${network.chainId})`);
     } else {
-      logger.info(`Network already exists: ${network.name} (ID: ${network.id})`);
+      logger.info(`Network already exists: ${network.name} (Chain ID: ${network.chainId})`);
     }
 
     // Process tokens for this network
@@ -584,7 +583,7 @@ async function seedBlockchainNetworks(): Promise<void> {
       // Check if token already exists for this network
       const existingToken = await tokenRepository.findOne({
         where: {
-          networkId: network.id,
+          chainId: network.chainId,
           symbol: tokenData.symbol,
           ...(tokenData.contractAddress ? { contractAddress: tokenData.contractAddress } : {}),
         },
@@ -592,7 +591,7 @@ async function seedBlockchainNetworks(): Promise<void> {
 
       if (!existingToken) {
         const token = tokenRepository.create({
-          networkId: network.id,
+          chainId: network.chainId,
           contractAddress: tokenData.contractAddress,
           symbol: tokenData.symbol,
           name: tokenData.name,
@@ -617,36 +616,63 @@ async function seedBlockchainNetworks(): Promise<void> {
 async function seedOrganizations(): Promise<void> {
   logger.info('Seeding organizations...');
 
-  const organizationRepository = AppDataSource.getRepository(Organization);
+  const queryRunner = AppDataSource.createQueryRunner();
+  
+  try {
+    // Check if default organization with specific UUID already exists
+    const defaultOrgId = '00000000-0000-0000-0000-000000000000';
+    const existingOrg = await queryRunner.query(
+      'SELECT id, name FROM organizations WHERE id = $1',
+      [defaultOrgId]
+    );
 
-  // Check if default organization already exists
-  let defaultOrg = await organizationRepository.findOne({
-    where: { slug: 'default' },
-  });
+    if (!existingOrg || existingOrg.length === 0) {
+      // Insert default organization with specific UUID using raw query
+      await queryRunner.query(`
+        INSERT INTO organizations (
+          id,
+          name, 
+          slug,
+          plan,
+          settings,
+          created_at,
+          updated_at
+        ) VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          NOW(),
+          NOW()
+        ) ON CONFLICT (id) DO NOTHING;
+      `, [
+        defaultOrgId,
+        'Default Organization',
+        'default',
+        'basic',
+        JSON.stringify({
+          timezone: 'UTC',
+          currency: 'USD',
+          invoiceNumberPrefix: 'INV',
+          paymentTerms: 30,
+          features: {
+            multiCurrency: false,
+            customBranding: false,
+            advancedReporting: false
+          }
+        })
+      ]);
 
-  if (!defaultOrg) {
-    // Create default organization
-    defaultOrg = organizationRepository.create({
-      name: 'Default Organization',
-      slug: 'default',
-      plan: 'basic',
-      settings: {
-        timezone: 'UTC',
-        currency: 'USD',
-        invoiceNumberPrefix: 'INV',
-        paymentTerms: 30,
-        features: {
-          multiCurrency: false,
-          customBranding: false,
-          advancedReporting: false
-        }
-      },
-    });
-
-    defaultOrg = await organizationRepository.save(defaultOrg);
-    logger.info(`Created default organization: ${defaultOrg.name} (ID: ${defaultOrg.id})`);
-  } else {
-    logger.info(`Default organization already exists: ${defaultOrg.name} (ID: ${defaultOrg.id})`);
+      logger.info(`Created default organization with ID: ${defaultOrgId}`);
+    } else {
+      logger.info(`Default organization already exists: ${existingOrg[0].name} (ID: ${existingOrg[0].id})`);
+    }
+  } catch (error) {
+    logger.error('Error seeding organizations', { error });
+    throw error;
+  } finally {
+    await queryRunner.release();
   }
 
   logger.info('Organizations seeding completed');

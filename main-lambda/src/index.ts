@@ -20,6 +20,11 @@ import { paymentRoutes } from '@/modules/payments/handlers';
 import { userRoutes } from '@/modules/users/handlers';
 import { analyticsRoutes } from '@/modules/analytics/handlers';
 import { configRoutes } from '@/modules/config/handlers';
+import { templateRoutes } from '@/modules/templates/handlers';
+import { publicRoutes } from '@/modules/public/handlers';
+import { adminRoutes } from '@/modules/admin/handlers';
+import { notificationRoutes } from '@/modules/notifications/handlers';
+import { jobRoutes } from '@/modules/jobs/handlers';
 
 const logger = new Logger('MainLambda');
 
@@ -135,9 +140,15 @@ app.get('/health', asyncHandler(async (_req: Request, res: Response) => {
 // API routes
 app.use('/invoices', invoiceRoutes);
 app.use('/payments', paymentRoutes);
-app.use('/users', userRoutes);
+app.use('/users', userRoutes); // Authentication endpoints (login, register)
+app.use('/user', userRoutes);  // Authenticated user endpoints (profile, stats)
+app.use('/templates', templateRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/config', configRoutes);
+app.use('/public', publicRoutes);
+app.use('/admin', adminRoutes);
+app.use('/notifications', notificationRoutes);
+app.use('/jobs', jobRoutes);
 
 // API info endpoint
 app.get('/', (req, res) => {
@@ -149,21 +160,48 @@ app.get('/', (req, res) => {
     endpoints: {
       invoices: {
         base: '/invoices',
-        description: 'Invoice management operations',
-        methods: ['GET', 'POST', 'PUT', 'DELETE']
+        description: 'Invoice management operations for authenticated users',
+        methods: ['GET', 'POST', 'PUT'],
+        routes: [
+          'GET /invoices - List user invoices',
+          'POST /invoices - Create new invoice', 
+          'GET /invoices/{id} - Get invoice details',
+          'PUT /invoices/{id}/status - Update invoice status',
+          'GET /invoices/{id}/share - Generate shareable link',
+          'GET /invoices/{id}/public - Public invoice view (no auth)',
+          'GET /invoices/stats - Invoice statistics'
+        ]
       },
       payments: {
         base: '/payments',
         description: 'Payment verification and tracking',
         methods: ['GET', 'POST']
       },
-      users: {
+      authentication: {
         base: '/users',
-        description: 'User authentication and profile management',
-        methods: ['GET', 'POST', 'PUT', 'DELETE']
+        description: 'User authentication (signup, login)',
+        methods: ['POST'],
+        routes: [
+          'POST /users/auth/message - Generate auth challenge',
+          'POST /users/auth/verify - Verify wallet signature',
+          'POST /users/validate-address - Validate wallet format',
+          'GET /users/platform/stats - Public platform statistics',
+          'GET /users/exists/{wallet} - Check user existence'
+        ]
+      },
+      user: {
+        base: '/user',
+        description: 'Authenticated user profile and data',
+        methods: ['GET', 'PUT', 'DELETE'],
+        routes: [
+          'GET /user/profile - Get authenticated user profile',
+          'PUT /user/profile - Update user profile',  
+          'DELETE /user/profile - Delete user account',
+          'GET /user/stats - Get user statistics'
+        ]
       },
       analytics: {
-        base: '/analytics',
+        base: '/analytics', 
         description: 'Analytics and reporting',
         methods: ['GET', 'POST']
       },
@@ -174,7 +212,7 @@ app.get('/', (req, res) => {
         subRoutes: [
           '/config/networks',
           '/config/networks/{chainId}',
-          '/config/tokens',
+          '/config/tokens', 
           '/config/tokens/{chainId}',
           '/config/app-config',
           '/config/summary'

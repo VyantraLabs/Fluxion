@@ -119,24 +119,28 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         configApi.getTokens({ active: true }),
       ]);
 
-      const networks = handleApiResponse<NetworksResponse>(networksResponse);
-      const tokens = handleApiResponse<TokensResponse>(tokensResponse);
+      const networksData = handleApiResponse<any>(networksResponse);
+      const tokensData = handleApiResponse<any>(tokensResponse);
+
+      // Extract networks from the response (API returns { networks: [...] })
+      const networks = networksData.networks || [];
+      const tokens = tokensData.tokens || [];
 
       // Determine default network (prefer mainnet)
-      const defaultNetwork = networks.networks.find(n => !n.isTestnet)?.chainId || 137;
+      const defaultNetwork = networks.find((n: any) => !n.isTestnet)?.chainId || 137;
 
       dispatch({
         type: 'LOAD_SUCCESS',
         payload: {
-          networks: networks.networks,
-          tokens: tokens.tokens,
+          networks: networks,
+          tokens: tokens,
           defaultNetwork,
         },
       });
 
       console.log('Configuration loaded successfully', {
-        networksCount: networks.count,
-        tokensCount: tokens.count,
+        networksCount: networks.length,
+        tokensCount: tokens.length,
         defaultNetwork,
       });
     } catch (error: any) {
@@ -217,32 +221,36 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // If summary fails, try loading networks and tokens separately
       const networksResponse = await configApi.getNetworks({ active: true });
-      const networksData = handleApiResponse<NetworksResponse>(networksResponse);
+      const networksApiData = handleApiResponse<any>(networksResponse);
 
       // Try to load tokens, but continue if it fails
-      let tokensData: TokensResponse = { tokens: [], count: 0, stablecoins: [], nativeTokens: [], erc20Tokens: [] };
+      let tokensApiData: any = { tokens: [] };
       try {
         const tokensResponse = await configApi.getTokens({ active: true });
-        tokensData = handleApiResponse<TokensResponse>(tokensResponse);
+        tokensApiData = handleApiResponse<any>(tokensResponse);
       } catch (tokensError) {
         console.warn('Tokens endpoint failed, continuing with networks only:', tokensError);
       }
 
+      // Extract arrays from API responses
+      const networks = networksApiData.networks || [];
+      const tokens = tokensApiData.tokens || [];
+
       // Determine default network (prefer mainnet)
-      const defaultNetwork = networksData.networks.find(n => !n.isTestnet)?.chainId || 137;
+      const defaultNetwork = networks.find((n: any) => !n.isTestnet)?.chainId || 137;
 
       dispatch({
         type: 'LOAD_SUCCESS',
         payload: {
-          networks: networksData.networks,
-          tokens: tokensData.tokens,
+          networks: networks,
+          tokens: tokens,
           defaultNetwork,
         },
       });
 
       console.log('Configuration loaded successfully (fallback method)', {
-        networksCount: networksData.count,
-        tokensCount: tokensData.count,
+        networksCount: networks.length,
+        tokensCount: tokens.length,
         defaultNetwork,
       });
     } catch (error: any) {

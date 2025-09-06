@@ -1,0 +1,81 @@
+<h2>🎉 Payment Received!</h2>
+
+<p>Congratulations! Your invoice has been successfully paid.</p>
+
+<div class="success-box">
+    <p style="font-size: 18px; margin: 0; color: #22c55e;"><strong>✅ Payment Confirmed</strong></p>
+    <p style="margin: 10px 0 0 0;">Your payment has been verified on the blockchain and processed successfully.</p>
+</div>
+
+<div class="highlight-box">
+    <table class="info-table" style="margin: 0;">
+        <tr>
+            <th width="40%">Invoice Number</th>
+            <td><strong>{{invoiceNumber}}</strong></td>
+        </tr>
+        <tr>
+            <th>Amount Received</th>
+            <td><span class="amount">{{amount}} {{currency}}</span></td>
+        </tr>
+        <tr>
+            <th>Payment Date</th>
+            <td>{{paymentDate}}</td>
+        </tr>
+        <tr>
+            <th>Client</th>
+            <td>{{clientName}}</td>
+        </tr>
+        <tr>
+            <th>Network</th>
+            <td>{{networkName}}</td>
+        </tr>
+        <tr>
+            <th>Transaction Hash</th>
+            <td>
+                <div class="transaction-hash">{{transactionHash}}</div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="text-center mt-20 mb-20">
+    <a href="{{transactionUrl}}" class="cta-button">🔗 View on Blockchain Explorer</a>
+</div>
+
+<p><strong>What happens next?</strong></p>
+<ul>
+    <li>✅ Payment has been confirmed and recorded</li>
+    <li>✅ Invoice status updated to "Paid"</li>
+    <li>✅ Transaction recorded on {{networkName}} blockchain</li>
+    <li>✅ Payment confirmation sent to your client</li>
+</ul>
+
+<div class="highlight-box">
+    <p><strong>📊 Payment Summary</strong></p>
+    <p>This payment was processed through Fluxion's secure Web3 payment system:</p>
+    <ul>
+        <li><strong>Security:</strong> Verified on-chain transaction</li>
+        <li><strong>Speed:</strong> Instant confirmation</li>
+        <li><strong>Transparency:</strong> Full blockchain verification</li>
+        <li><strong>Global:</strong> No traditional banking required</li>
+    </ul>
+</div>
+
+<div class="text-center mt-20">
+    <a href="https://fluxion.pay/dashboard" class="secondary-button">📈 View Dashboard</a>
+    <a href="https://fluxion.pay/invoices/{{invoiceId}}" class="secondary-button">📄 View Invoice</a>
+</div>
+
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+<p style="font-size: 14px; color: #6b7280;">
+    <strong>Payment ID:</strong> {{paymentId}}<br>
+    <strong>Invoice ID:</strong> {{invoiceId}}<br>
+    <strong>Organization:</strong> {{organizationName}}<br>
+    <strong>Transaction Hash:</strong> {{transactionHash}}
+</p>
+
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+    <strong>Note:</strong> This email confirms that payment has been received and verified on the blockchain. 
+    The transaction is immutable and permanently recorded on the {{networkName}} network.
+</p>

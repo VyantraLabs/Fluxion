@@ -14,6 +14,7 @@ import {
   UserEntity, 
   AuthenticateWalletDTO, 
   UpdateUserProfileDTO,
+  CompleteOnboardingDTO,
   AuthResponse,
   JWTPayload,
   AuthMessage
@@ -26,6 +27,7 @@ export class UserService {
 
   /**
    * Authenticate user with wallet signature
+   * Returns success only for EXISTING users, throws NOT_FOUND for new users
    */
   async authenticateWallet(data: AuthenticateWalletDTO): Promise<AuthResponse> {
     this.logger.info('Authenticating wallet', { 
@@ -54,14 +56,154 @@ export class UserService {
         throw createUnauthorizedError('Authentication message too old');
       }
 
-      // Get or create user
-      let user = await this.findByWalletAddress(data.wallet_address);
-      if (!user) {
-        user = await this.createUser(data.wallet_address);
-      } else {
-        // Update last active time
-        await this.updateLastActive(data.wallet_address);
+      // Use the shared users service to check if user exists first
+      const { UsersService } = await import('@/shared/services/users.service');
+      const usersService = new UsersService(this.db);
+      const defaultTenantContext = { tenantId: 'default' }; // Use 'default' which will be resolved to proper ULID
+      
+      // Check if user exists - DO NOT CREATE if not found
+      let userRecord: any;
+      
+      try {
+        userRecord = await usersService.getUserByWallet(defaultTenantContext, data.wallet_address);
+        this.logger.info('Existing user found for authentication', { 
+          wallet_address: data.wallet_address, 
+          user_id: userRecord.id 
+        });
+      } catch (error: any) {
+        if (error.code === 'NOT_FOUND' || error.code === ErrorCodes.NOT_FOUND) {
+          // User doesn't exist - return 404 for frontend to handle onboarding
+          this.logger.info('User not found during authentication', { wallet_address: data.wallet_address });
+          throw createNotFoundError('User not found. Please complete onboarding first.', data.wallet_address);
+        } else {
+          throw error;
+        }
       }
+      
+      // Generate JWT token with proper user ID and tenant ID
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        throw new Error('JWT_SECRET not configured');
+      }
+
+      const tokenPayload: JWTPayload = {
+        wallet_address: data.wallet_address,
+        user_id: userRecord.id, // Use actual user UUID from database
+        tenant_id: userRecord.tenant_id, // Use actual tenant ID from user record
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+      };
+
+      const token = jwt.sign(tokenPayload, jwtSecret);
+
+      // Transform userRecord to User format for response
+      const user: User = {
+        id: userRecord.id,
+        wallet_address: userRecord.wallet_address,
+        email: userRecord.email,
+        display_name: userRecord.profile?.display_name,
+        notification_preferences: userRecord.notification_preferences,
+        stats: userRecord.stats,
+        created_at: userRecord.created_at,
+        updated_at: userRecord.updated_at
+      };
+
+      // Determine if user needs onboarding (existing users might still need to complete profile)
+      const needsOnboarding = !userRecord.organization?.name || 
+        userRecord.organization.name.includes("'s Organization"); // Default generated name
+
+      const authResponse: AuthResponse = {
+        token,
+        user,
+        expires_at: new Date(tokenPayload.exp * 1000).toISOString(),
+        needsOnboarding,
+        organization: userRecord.organization,
+        isNewUser: false // This endpoint only handles existing users
+      };
+
+      this.logger.info('Wallet authentication successful', { 
+        wallet_address: data.wallet_address,
+        user_id: userRecord.id,
+        tenant_id: userRecord.tenant_id,
+        needs_onboarding: needsOnboarding
+      });
+
+      return authResponse;
+    } catch (error) {
+      this.logger.error('Wallet authentication failed', { 
+        error,
+        wallet_address: data.wallet_address 
+      });
+      
+      if (error instanceof Error && error.message.includes('invalid signature')) {
+        throw createUnauthorizedError('Invalid signature');
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Create new user with organization (for onboarding flow)
+   */
+  async createNewUser(data: AuthenticateWalletDTO & { 
+    organizationName?: string;
+    displayName?: string; 
+    email?: string;
+  }): Promise<AuthResponse> {
+    this.logger.info('Creating new user with organization', { 
+      wallet_address: data.wallet_address,
+      organization_name: data.organizationName 
+    });
+
+    // Verify the signature first
+    try {
+      const isValidSignature = this.blockchain.verifyWalletSignature(
+        data.message,
+        data.signature,
+        data.wallet_address
+      );
+      
+      if (!isValidSignature) {
+        throw createUnauthorizedError('Invalid signature - wallet address mismatch');
+      }
+
+      // Parse and validate message timestamp
+      const authMessage = this.parseAuthMessage(data.message);
+      const now = Date.now();
+      const messageAge = now - authMessage.timestamp;
+      
+      if (messageAge > 5 * 60 * 1000) {
+        throw createUnauthorizedError('Authentication message too old');
+      }
+
+      // Use the shared users service to create user with organization
+      const { UsersService } = await import('@/shared/services/users.service');
+      const usersService = new UsersService(this.db);
+      const defaultTenantContext = { tenantId: 'default' };
+      
+      // Check if user already exists
+      try {
+        const existingUser = await usersService.getUserByWallet(defaultTenantContext, data.wallet_address);
+        if (existingUser) {
+          throw new Error('User already exists. Please use the login flow instead.');
+        }
+      } catch (error: any) {
+        // User not found is expected for new user creation
+        if (error.code !== 'NOT_FOUND' && error.code !== ErrorCodes.NOT_FOUND) {
+          throw error;
+        }
+      }
+
+      // Create new user with organization
+      const userRecord = await usersService.createUser(defaultTenantContext, {
+        wallet_address: data.wallet_address,
+        organizationName: data.organizationName || `${data.wallet_address.substring(0, 8)}'s Organization`,
+        email: data.email,
+        profile: {
+          display_name: data.displayName
+        }
+      });
 
       // Generate JWT token
       const jwtSecret = process.env.JWT_SECRET;
@@ -71,25 +213,45 @@ export class UserService {
 
       const tokenPayload: JWTPayload = {
         wallet_address: data.wallet_address,
+        user_id: userRecord.id,
+        tenant_id: userRecord.tenant_id,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
       };
 
       const token = jwt.sign(tokenPayload, jwtSecret);
 
+      // Transform userRecord to User format for response
+      const user: User = {
+        id: userRecord.id,
+        wallet_address: userRecord.wallet_address,
+        email: userRecord.email,
+        display_name: userRecord.profile?.display_name,
+        notification_preferences: userRecord.notification_preferences,
+        stats: userRecord.stats,
+        created_at: userRecord.created_at,
+        updated_at: userRecord.updated_at
+      };
+
       const authResponse: AuthResponse = {
         token,
         user,
-        expires_at: new Date(tokenPayload.exp * 1000).toISOString()
+        expires_at: new Date(tokenPayload.exp * 1000).toISOString(),
+        needsOnboarding: false, // User just completed onboarding
+        organization: userRecord.organization,
+        isNewUser: true
       };
 
-      this.logger.info('Wallet authentication successful', { 
-        wallet_address: data.wallet_address 
+      this.logger.info('New user created and authenticated successfully', { 
+        wallet_address: data.wallet_address,
+        user_id: userRecord.id,
+        tenant_id: userRecord.tenant_id,
+        organization_id: userRecord.organization?.id
       });
 
       return authResponse;
     } catch (error) {
-      this.logger.error('Wallet authentication failed', { 
+      this.logger.error('New user creation failed', { 
         error,
         wallet_address: data.wallet_address 
       });
@@ -145,15 +307,15 @@ export class UserService {
     this.logger.info('Finding user by wallet address', { wallet_address: walletAddress });
 
     try {
-      // Use the new multi-table PostgreSQL service
+      // Use the shared users service with proper tenant resolution
       const { UsersService } = await import('@/shared/services/users.service');
       const usersService = new UsersService(this.db);
-      const tenantContext = { tenantId: 'default' }; // Default tenant for legacy compatibility
+      const defaultTenantContext = { tenantId: 'default' }; // Use 'default' which will be resolved to proper ULID
 
-      // First try to get existing user, if not found return null
+      // Try to get existing user, if not found return null
       let userRecord;
       try {
-        userRecord = await usersService.getUserByWallet(tenantContext, walletAddress);
+        userRecord = await usersService.getUserByWallet(defaultTenantContext, walletAddress);
       } catch (error: any) {
         this.logger.debug('getUserByWallet error details', { 
           wallet_address: walletAddress,
@@ -178,8 +340,9 @@ export class UserService {
         throw error;
       }
       
-      // Transform PostgreSQL user record to legacy format
+      // Transform userRecord to User format
       const user: User = {
+        id: userRecord.id,
         wallet_address: userRecord.wallet_address,
         email: userRecord.email,
         display_name: userRecord.profile?.display_name,
@@ -199,6 +362,7 @@ export class UserService {
 
       this.logger.info('User found via PostgreSQL', { 
         wallet_address: walletAddress,
+        user_id: user.id,
         display_name: user.display_name 
       });
 
@@ -223,13 +387,14 @@ export class UserService {
       // Use the new multi-table PostgreSQL service with proper error handling
       const { UsersService } = await import('@/shared/services/users.service');
       const usersService = new UsersService(this.db);
-      const tenantContext = { tenantId: 'default' }; // Default tenant for legacy compatibility
+      const tenantContext = { tenantId: '01HBXYZ0000000000000000000' }; // Default tenant ULID for consistency
 
       // Use getOrCreateUserByWallet to handle tenant resolution and user creation
       const userRecord = await usersService.getOrCreateUserByWallet(tenantContext, walletAddress);
 
       // Transform PostgreSQL user record to legacy format
       const user: User = {
+        id: userRecord.id,
         wallet_address: userRecord.wallet_address,
         email: userRecord.email,
         display_name: userRecord.profile?.display_name,

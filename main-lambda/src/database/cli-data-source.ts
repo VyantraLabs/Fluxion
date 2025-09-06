@@ -20,6 +20,12 @@ import { PayrollBatch } from './entities/PayrollBatch';
 import { PayrollRecipient } from './entities/PayrollRecipient';
 import { OrganizationSetting } from './entities/OrganizationSetting';
 import { AuditLog } from './entities/AuditLog';
+// Production feature entities
+import { InvoiceTemplate } from './entities/InvoiceTemplate';
+import { InvoiceAccessToken } from './entities/InvoiceAccessToken';
+import { NotificationQueue } from './entities/NotificationQueue';
+import { NotificationSettings } from './entities/NotificationSettings';
+import { PaymentVerificationJob } from './entities/PaymentVerificationJob';
 
 const dataSource = new DataSource({
   type: 'postgres',
@@ -42,6 +48,12 @@ const dataSource = new DataSource({
     PayrollRecipient,
     OrganizationSetting,
     AuditLog,
+    // Production feature entities
+    InvoiceTemplate,
+    InvoiceAccessToken,
+    NotificationQueue,
+    NotificationSettings,
+    PaymentVerificationJob,
   ],
   
   migrations: ['src/database/migrations/*.ts'],

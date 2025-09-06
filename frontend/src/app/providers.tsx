@@ -8,6 +8,7 @@ import { ConfigProvider } from '@/contexts/ConfigContext';
 import { Web3Provider } from '@/contexts/Web3Context';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { OnboardingManager } from '@/components/common/OnboardingManager';
 import { config } from '@/utils/config';
 
 // Create a client
@@ -39,6 +40,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <Web3Provider>
             <AuthProvider>
             {children}
+            
+            {/* Onboarding Manager */}
+            <OnboardingManager />
             
             {/* Toast Notifications */}
             <Toaster
@@ -90,7 +94,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             {config.isDevelopment && (
               <ReactQueryDevtools 
                 initialIsOpen={false}
-                position="bottom-right"
+                position="bottom-right" as any
               />
             )}
             </AuthProvider>

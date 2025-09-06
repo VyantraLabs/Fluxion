@@ -1,26 +1,31 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
   Index,
+  BeforeInsert,
 } from 'typeorm';
+import { ulid } from 'ulid';
 import { User } from './User';
 import { Invoice } from './Invoice';
 import { Payment } from './Payment';
 import { PayrollBatch } from './PayrollBatch';
 import { OrganizationSetting } from './OrganizationSetting';
 import { AuditLog } from './AuditLog';
+import { InvoiceTemplate } from './InvoiceTemplate';
+import { NotificationQueue } from './NotificationQueue';
+import { NotificationSettings } from './NotificationSettings';
 
 export type OrganizationPlan = 'basic' | 'professional' | 'enterprise';
 
 @Entity('organizations')
 @Index(['slug'], { unique: true })
 export class Organization {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'varchar' })
   id!: string;
 
   @Column({ type: 'varchar', length: 255, nullable: false })
@@ -68,6 +73,15 @@ export class Organization {
   @OneToMany(() => AuditLog, auditLog => auditLog.organization, { cascade: true })
   auditLogs!: AuditLog[];
 
+  @OneToMany(() => InvoiceTemplate, template => template.organization, { cascade: true })
+  invoiceTemplates!: InvoiceTemplate[];
+
+  @OneToMany(() => NotificationQueue, notification => notification.organization, { cascade: true })
+  notifications!: NotificationQueue[];
+
+  @OneToMany(() => NotificationSettings, settings => settings.organization, { cascade: true })
+  notificationSettings!: NotificationSettings[];
+
   // Computed properties
   get isActive(): boolean {
     return !this.deletedAt;
@@ -99,5 +113,12 @@ export class Organization {
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
+  }
+
+  @BeforeInsert()
+  generateId(): void {
+    if (!this.id) {
+      this.id = ulid();
+    }
   }
 }

@@ -110,48 +110,16 @@ export interface NetworkInfo {
   iconUrls?: string[];
 }
 
-// Polygon network constants
-export const POLYGON_MAINNET: NetworkInfo = {
-  chainId: 137,
-  name: 'Polygon',
-  currency: {
-    name: 'MATIC',
-    symbol: 'MATIC',
-    decimals: 18,
-  },
-  rpcUrls: ['https://polygon-rpc.com'],
-  blockExplorerUrls: ['https://polygonscan.com'],
-  iconUrls: ['https://wallet-asset.matic.network/img/tokens/matic.svg'],
-};
-
-export const POLYGON_MUMBAI: NetworkInfo = {
-  chainId: 80001,
-  name: 'Polygon Mumbai',
-  currency: {
-    name: 'MATIC',
-    symbol: 'MATIC',
-    decimals: 18,
-  },
-  rpcUrls: ['https://rpc-mumbai.maticvigil.com'],
-  blockExplorerUrls: ['https://mumbai.polygonscan.com'],
-  iconUrls: ['https://wallet-asset.matic.network/img/tokens/matic.svg'],
-};
-
-// USDC token contracts
-export const USDC_CONTRACTS = {
-  [POLYGON_MAINNET.chainId]: {
-    address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as WalletAddress,
-    decimals: 6,
-    symbol: 'USDC',
-    name: 'USD Coin',
-  },
-  [POLYGON_MUMBAI.chainId]: {
-    address: '0x9999f7fea5938fd3b1e26a12c3f2fb024e194f97' as WalletAddress,
-    decimals: 6,
-    symbol: 'USDC',
-    name: 'USD Coin (Test)',
-  },
-} as const;
+// Network and token configurations are now loaded dynamically from the backend API
+// Use ConfigContext hooks like useNetworks(), useTokens(), useNetworkById(), etc.
+// 
+// Example:
+// const networks = useNetworks();
+// const tokens = useTokensByChainId(137);
+// const usdcTokens = useTokens().filter(t => t.symbol === 'USDC');
+//
+// This ensures all network and token data comes from the database and is configurable
+// without code changes.
 
 // Wallet connection errors
 export enum WalletError {
@@ -166,14 +134,29 @@ export enum WalletError {
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
-export interface WalletErrorInfo {
+export interface WalletErrorDetails {
   code: WalletError;
   message: string;
   details?: any;
 }
 
-// Ensure WalletErrorInfo is properly exported
-export type { WalletErrorInfo };
+// Wallet error class that can be thrown
+export class WalletErrorInfo extends Error implements WalletErrorDetails {
+  public readonly code: WalletError;
+  public readonly details?: any;
+
+  constructor(error: WalletErrorDetails) {
+    super(error.message);
+    this.name = 'WalletError';
+    this.code = error.code;
+    this.details = error.details;
+    
+    // Maintains proper stack trace for where error was thrown (only available on V8)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, WalletErrorInfo);
+    }
+  }
+}
 
 // Wallet events
 export type WalletEvent = 

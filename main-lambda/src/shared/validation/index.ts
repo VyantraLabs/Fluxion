@@ -14,8 +14,23 @@ const transactionHash = z.string()
   .length(66, 'Invalid transaction hash length')
   .regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash format');
 
-const uuidSchema = z.string()
-  .uuid('Invalid UUID format');
+// ULID validation - 26 characters, alphanumeric, case-insensitive
+const ulidSchema = z.string()
+  .length(26, 'Invalid ULID length')
+  .regex(/^[0-9A-HJKMNP-TV-Z]{26}$/i, 'Invalid ULID format');
+
+// For backward compatibility, accept both UUIDs and ULIDs during transition
+const idSchema = z.string()
+  .refine(
+    (val) => {
+      // Check if it's a valid UUID (36 chars with hyphens)
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+      // Check if it's a valid ULID (26 chars alphanumeric)
+      const isUlid = /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(val);
+      return isUuid || isUlid;
+    },
+    'Invalid ID format - must be either UUID or ULID'
+  );
 
 const monetaryAmount = z.number()
   .min(CONSTANTS.MIN_INVOICE_AMOUNT, `Amount must be at least ${CONSTANTS.MIN_INVOICE_AMOUNT}`)
@@ -27,7 +42,7 @@ const emailSchema = z.string()
 
 // Line item schema
 export const LineItemSchema = z.object({
-  id: uuidSchema.optional(),
+  id: idSchema.optional(),
   description: z.string()
     .min(1, 'Description is required')
     .max(200, 'Description too long')
@@ -83,61 +98,38 @@ export const ValidateAddressSchema = z.object({
 
 // Invoice schemas
 export const CreateInvoiceSchema = z.object({
-  creator_wallet: walletAddress,
-  client_email: emailSchema,
-  client_name: z.string()
-    .min(1, 'Client name is required')
-    .max(100, 'Client name too long')
+  title: z.string()
+    .min(1, 'Title is required')
+    .max(255, 'Title too long')
     .trim(),
-  amount: monetaryAmount,
   description: z.string()
     .min(1, 'Description is required')
     .max(500, 'Description too long')
     .trim(),
-  line_items: z.array(LineItemSchema)
-    .max(50, 'Too many line items')
-    .optional(),
-  due_date: z.string()
-    .datetime('Invalid due date format')
-    .refine(date => new Date(date) > new Date(), 'Due date must be in the future')
-}).refine(invoice => {
-  // If line items exist, total should match amount
-  if (invoice.line_items && invoice.line_items.length > 0) {
-    const total = invoice.line_items.reduce((sum, item) => sum + item.amount, 0);
-    return Math.abs(total - invoice.amount) < 0.01;
-  }
-  return true;
-}, {
-  message: 'Total line item amount must match invoice amount',
-  path: ['amount']
+  clientName: z.string()
+    .min(1, 'Client name is required')
+    .max(255, 'Client name too long')
+    .trim(),
+  clientEmail: emailSchema,
+  clientWallet: walletAddress.optional(),
+  amount: z.number()
+    .min(CONSTANTS.MIN_INVOICE_AMOUNT, `Amount must be at least ${CONSTANTS.MIN_INVOICE_AMOUNT}`)
+    .max(CONSTANTS.MAX_INVOICE_AMOUNT, `Amount cannot exceed ${CONSTANTS.MAX_INVOICE_AMOUNT}`),
+  dueDate: z.string()
+    .datetime('Invalid due date format'),
+  networkId: z.number()
+    .int('Network ID must be an integer')
+    .positive('Network ID must be positive'),
+  tokenId: idSchema
 });
 
-export const UpdateInvoiceSchema = z.object({
-  client_email: emailSchema.optional(),
-  client_name: z.string()
-    .min(1, 'Client name is required')
-    .max(100, 'Client name too long')
-    .trim()
-    .optional(),
-  description: z.string()
-    .min(1, 'Description is required')
-    .max(500, 'Description too long')
-    .trim()
-    .optional(),
-  line_items: z.array(LineItemSchema)
-    .max(50, 'Too many line items')
-    .optional(),
-  due_date: z.string()
-    .datetime('Invalid due date format')
-    .refine(date => new Date(date) > new Date(), 'Due date must be in the future')
-    .optional(),
-  status: z.enum(['draft', 'pending', 'paid', 'expired', 'cancelled'] as const)
-    .optional()
+export const UpdateInvoiceStatusSchema = z.object({
+  status: z.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial'] as const)
 });
 
 // Payment schemas
 export const VerifyPaymentSchema = z.object({
-  invoice_id: uuidSchema,
+  invoice_id: idSchema,
   tx_hash: transactionHash,
   from_address: walletAddress
 });
@@ -171,7 +163,7 @@ export const PaginationSchema = z.object({
     .default(CONSTANTS.DEFAULT_PAGE_SIZE.toString()),
   nextToken: z.string()
     .optional(),
-  status: z.enum(['draft', 'pending', 'paid', 'expired', 'cancelled'] as const)
+  status: z.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial'] as const)
     .optional()
 });
 
@@ -276,7 +268,7 @@ export const validate = (schema: z.ZodSchema) => {
 
 // Request parameter validation schemas
 export const InvoiceParamsSchema = z.object({
-  id: uuidSchema
+  id: idSchema
 });
 
 export const UserParamsSchema = z.object({
@@ -284,7 +276,7 @@ export const UserParamsSchema = z.object({
 });
 
 export const PaymentParamsSchema = z.object({
-  id: uuidSchema
+  id: idSchema
 });
 
 export const TransactionParamsSchema = z.object({
@@ -300,7 +292,7 @@ export const AnalyticsQuerySchema = z.object({
 });
 
 export const InvoiceIdSchema = z.object({
-  id: uuidSchema
+  id: idSchema
 });
 
 export const WalletAddressSchema = z.object({
@@ -313,7 +305,7 @@ export const WalletAddressParamSchema = z.object({
 
 // Invoice filter schema for listing invoices
 export const InvoiceFilterSchema = z.object({
-  status: z.enum(['draft', 'pending', 'paid', 'expired', 'cancelled'] as const).optional(),
+  status: z.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial'] as const).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   clientName: z.string().optional(),
@@ -344,9 +336,23 @@ export const UpdateUserSchema = z.object({
   }).optional()
 });
 
+// User onboarding schema
+export const CompleteOnboardingSchema = z.object({
+  organizationName: z.string()
+    .min(2, 'Organization name must be at least 2 characters')
+    .max(100, 'Organization name too long')
+    .trim(),
+  displayName: z.string()
+    .min(1, 'Display name is required')
+    .max(50, 'Display name too long')
+    .trim()
+    .optional(),
+  email: emailSchema.optional()
+});
+
 // Export types
 export type CreateInvoiceRequest = z.infer<typeof CreateInvoiceSchema>;
-export type UpdateInvoiceRequest = z.infer<typeof UpdateInvoiceSchema>;
+export type UpdateInvoiceStatusRequest = z.infer<typeof UpdateInvoiceStatusSchema>;
 export type AuthenticateWalletRequest = z.infer<typeof AuthenticateWalletSchema>;
 export type UpdateUserProfileRequest = z.infer<typeof UpdateUserProfileSchema>;
 export type VerifyPaymentRequest = z.infer<typeof VerifyPaymentSchema>;

@@ -1,0 +1,138 @@
+{{#if (eq urgencyLevel "gentle")}}
+<h2>💌 Friendly Payment Reminder</h2>
+{{else if (eq urgencyLevel "firm")}}
+<h2>📅 Payment Due Reminder</h2>
+{{else}}
+<h2>⏰ Urgent: Payment Overdue</h2>
+{{/if}}
+
+<p>Hi {{clientName}},</p>
+
+{{#if (eq urgencyLevel "gentle")}}
+<p>I hope this email finds you well. This is a friendly reminder that your invoice from <strong>{{creatorName}}</strong> at <strong>{{organizationName}}</strong> is approaching its due date.</p>
+{{else if (eq urgencyLevel "firm")}}
+<p>This is a reminder that your invoice from <strong>{{creatorName}}</strong> at <strong>{{organizationName}}</strong> is now due for payment.</p>
+{{else}}
+<p>This is an urgent reminder that your invoice from <strong>{{creatorName}}</strong> at <strong>{{organizationName}}</strong> is now <strong>{{daysPastDue}} days overdue</strong>.</p>
+{{/if}}
+
+{{#if (gt daysPastDue 0)}}
+<div class="urgent-box">
+    <p style="font-size: 18px; margin: 0; color: #ef4444;"><strong>⚠️ Payment Overdue</strong></p>
+    <p style="margin: 10px 0 0 0;">This invoice is {{daysPastDue}} day{{#if (gt daysPastDue 1)}}s{{/if}} past due.</p>
+</div>
+{{else}}
+<div class="highlight-box">
+    <p style="font-size: 18px; margin: 0; color: #f59e0b;"><strong>📅 Payment Due Soon</strong></p>
+    <p style="margin: 10px 0 0 0;">Please make your payment by the due date to avoid any delays.</p>
+</div>
+{{/if}}
+
+<div class="highlight-box">
+    <table class="info-table" style="margin: 0;">
+        <tr>
+            <th width="40%">Invoice Number</th>
+            <td><strong>{{invoiceNumber}}</strong></td>
+        </tr>
+        <tr>
+            <th>Amount Due</th>
+            <td><span class="amount">{{amount}} {{currency}}</span></td>
+        </tr>
+        <tr>
+            <th>Original Due Date</th>
+            <td>{{dueDate}}</td>
+        </tr>
+        {{#if (gt daysPastDue 0)}}
+        <tr>
+            <th>Days Overdue</th>
+            <td><strong style="color: #ef4444;">{{daysPastDue}} day{{#if (gt daysPastDue 1)}}s{{/if}}</strong></td>
+        </tr>
+        {{/if}}
+        <tr>
+            <th>Network</th>
+            <td>{{networkName}}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="text-center mt-20 mb-20">
+    <a href="{{paymentUrl}}" class="cta-button">💳 Pay Invoice Now</a>
+</div>
+
+{{#if (eq urgencyLevel "gentle")}}
+<p><strong>Why Pay with Crypto?</strong></p>
+<ul>
+    <li>🚀 <strong>Instant Settlement:</strong> Payments are confirmed immediately</li>
+    <li>🌍 <strong>Global Access:</strong> Pay from anywhere in the world</li>
+    <li>🔒 <strong>Secure:</strong> Protected by blockchain technology</li>
+    <li>💰 <strong>Lower Fees:</strong> Minimal transaction costs</li>
+</ul>
+{{else if (eq urgencyLevel "firm")}}
+<p><strong>Payment Instructions:</strong></p>
+<ol>
+    <li>Click the "Pay Invoice Now" button above</li>
+    <li>Connect your crypto wallet</li>
+    <li>Verify the amount and network: <strong>{{amount}} {{currency}}</strong> on <strong>{{networkName}}</strong></li>
+    <li>Confirm and submit the transaction</li>
+</ol>
+{{else}}
+<p><strong>⚠️ Immediate Action Required:</strong></p>
+<ol>
+    <li><strong>Pay Now:</strong> Click the button above to pay immediately</li>
+    <li><strong>Contact Us:</strong> If you have issues, contact {{creatorName}} directly</li>
+    <li><strong>Avoid Delays:</strong> Overdue payments may impact future services</li>
+</ol>
+{{/if}}
+
+{{#if (eq urgencyLevel "gentle")}}
+<div class="highlight-box">
+    <p><strong>New to Crypto Payments?</strong></p>
+    <p>No worries! We've made it simple:</p>
+    <ul>
+        <li><a href="https://fluxion.pay/help/payments">Step-by-Step Payment Guide</a></li>
+        <li><a href="https://fluxion.pay/help/wallets">How to Set Up a Wallet</a></li>
+        <li><a href="https://fluxion.pay/help/faq">Frequently Asked Questions</a></li>
+    </ul>
+    <p>If you need any assistance, don't hesitate to reach out!</p>
+</div>
+{{else}}
+<div class="highlight-box">
+    <p><strong>Need Help?</strong></p>
+    <p>If you're experiencing difficulties with payment:</p>
+    <ul>
+        <li><strong>Payment Issues:</strong> <a href="https://fluxion.pay/help/troubleshooting">Troubleshooting Guide</a></li>
+        <li><strong>Technical Support:</strong> <a href="mailto:support@fluxion.pay">support@fluxion.pay</a></li>
+        <li><strong>Direct Contact:</strong> Reply to this email to reach {{creatorName}}</li>
+    </ul>
+</div>
+{{/if}}
+
+<div class="text-center mt-20">
+    <a href="{{invoiceViewUrl}}" class="secondary-button">📄 View Full Invoice</a>
+    {{#if (gt daysPastDue 0)}}
+    <a href="mailto:{{creatorName}}@{{organizationName}}?subject=Invoice {{invoiceNumber}} - Payment Query" class="secondary-button">📧 Contact {{creatorName}}</a>
+    {{/if}}
+</div>
+
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+<p style="font-size: 14px; color: #6b7280;">
+    <strong>Invoice ID:</strong> {{invoiceId}}<br>
+    <strong>From:</strong> {{creatorName}} ({{organizationName}})<br>
+    <strong>Amount:</strong> {{amount}} {{currency}}<br>
+    <strong>Due Date:</strong> {{dueDate}}
+</p>
+
+{{#if (eq urgencyLevel "gentle")}}
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+    Thank you for your business! We appreciate your prompt attention to this invoice.
+</p>
+{{else if (eq urgencyLevel "firm")}}
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+    Thank you for your immediate attention to this payment request.
+</p>
+{{else}}
+<p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">
+    <strong>Important:</strong> This is an automated reminder. Please pay immediately or contact us if there are any issues.
+</p>
+{{/if}}

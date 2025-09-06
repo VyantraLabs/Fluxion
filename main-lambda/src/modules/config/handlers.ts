@@ -149,13 +149,15 @@ router.get('/networks',
       filter.symbols = query.symbols.split(',').map(s => s.trim().toUpperCase());
     }
 
-    const networks = await configService.getNetworks(filter);
+    const includeTokens = query.includeTokens === 'true';
+    const networks = await configService.getNetworks(filter, includeTokens);
 
     logger.info('Networks configuration retrieved', { 
       count: networks.count,
       mainnets: networks.mainnets.length,
       testnets: networks.testnets.length,
-      filter 
+      filter,
+      includeTokens 
     });
 
     res.success(networks);

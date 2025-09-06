@@ -21,7 +21,7 @@ export type PayrollBatchStatus = 'draft' | 'processing' | 'completed' | 'failed'
 @Entity('payroll_batches')
 @Index(['organizationId'])
 @Index(['createdBy'])
-@Index(['networkId'])
+@Index(['chainId'])
 @Index(['tokenId'])
 @Index(['status'])
 @Index(['executedAt'])
@@ -43,8 +43,8 @@ export class PayrollBatch {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ name: 'network_id', type: 'uuid', nullable: false })
-  networkId!: string;
+  @Column({ name: 'chain_id', type: 'integer', nullable: false })
+  chainId!: number;
 
   @Column({ name: 'token_id', type: 'uuid', nullable: false })
   tokenId!: string;
@@ -123,7 +123,7 @@ export class PayrollBatch {
   @ManyToOne(() => BlockchainNetwork, network => network.payrollBatches, {
     nullable: false,
   })
-  @JoinColumn({ name: 'network_id' })
+  @JoinColumn({ name: 'chain_id' })
   network!: BlockchainNetwork;
 
   @ManyToOne(() => Token, token => token.payrollBatches, {

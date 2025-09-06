@@ -1,4 +1,5 @@
 import { Repository, FindOptionsWhere, FindManyOptions, DeepPartial } from 'typeorm';
+import { ulid } from 'ulid';
 import { AppDataSource, setTenantContext, setUserContext } from '../data-source';
 import { FluxionError, ErrorCodes, TenantContext } from '@/types/common';
 import { Logger } from '@/shared/utils/logger';
@@ -37,10 +38,11 @@ export abstract class BaseRepository<T extends { id: string; organizationId?: st
     await this.setTenantContext(tenantContext);
     
     try {
-      // Add organization ID for multi-tenant entities
+      // Add organization ID for multi-tenant entities and generate ULID if not provided
       const entityData = {
         ...data,
         ...(this.isMultiTenant() && { organizationId: tenantContext.tenantId }),
+        ...(!data.id && { id: ulid() }),
       } as DeepPartial<T>;
 
       const entity = this.repository.create(entityData);
@@ -394,9 +396,7 @@ export abstract class BaseRepository<T extends { id: string; organizationId?: st
    * Generate unique ID
    */
   generateId(): string {
-    // TypeORM will handle UUID generation automatically
-    // This method is kept for compatibility with existing code
-    return 'generated-by-typeorm';
+    return ulid();
   }
 
   /**

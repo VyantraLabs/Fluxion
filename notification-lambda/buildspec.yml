@@ -1,0 +1,48 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo Install phase started on `date`
+      - npm install -g aws-cli
+      - npm install -g @aws-lambda-powertools/cli
+      
+  pre_build:
+    commands:
+      - echo Pre-build phase started on `date`
+      - npm install
+      - npm run lint
+      - npm run test:cov
+      
+  build:
+    commands:
+      - echo Build phase started on `date`
+      - npm run clean
+      - npm run build
+      - echo Build completed on `date`
+      
+  post_build:
+    commands:
+      - echo Post-build phase started on `date`
+      - echo Copying deployment artifacts
+      - cp template.yaml dist/
+      - cp -r node_modules dist/ || true
+      
+artifacts:
+  files:
+    - 'dist/**/*'
+    - 'template.yaml'
+  base-directory: .
+
+cache:
+  paths:
+    - node_modules/**/*
+
+reports:
+  jest_reports:
+    files:
+      - coverage/lcov.info
+    file-format: CLOVERXML
+    base-directory: coverage

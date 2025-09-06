@@ -11,19 +11,29 @@ const swaggerDefinition = {
     title: 'Fluxion API',
     version: '2.0.0',
     description: `
-      Fluxion is a blockchain-based invoice and payment management system.
-      This API provides endpoints for managing users, invoices, and payments with multi-chain blockchain support.
+      Fluxion is a production-ready Web3 payment platform for crypto-native invoicing and payroll.
+      This comprehensive API provides endpoints for invoice management, payment processing, notifications,
+      template management, and multi-chain blockchain support.
       
-      ## Features
-      - Multi-tenant architecture with secure tenant isolation
-      - Blockchain payment processing with multiple networks (Polygon, Ethereum)
-      - Real-time payment verification and confirmation tracking
-      - Comprehensive invoice lifecycle management
-      - User authentication via wallet signatures
+      ## Complete Feature Set
+      - **Advanced Invoice Management**: Template-based creation, public client portal, bulk operations
+      - **Production Notification System**: Professional email templates with multi-provider delivery
+      - **Background Processing**: Automated payment verification and reminder system
+      - **Template Management**: Customizable organization-branded invoice templates
+      - **Multi-Chain Support**: Dynamic blockchain configuration (Ethereum, Polygon, Arbitrum, Base)
+      - **Enterprise Architecture**: Multi-tenant with row-level security and comprehensive audit logging
+      - **Real-time Analytics**: Dashboard metrics, payment tracking, and business intelligence
       
       ## Authentication
-      Most endpoints require authentication via JWT tokens obtained through wallet signature verification.
+      Most endpoints require JWT authentication obtained through wallet signature verification.
       Include the token in the Authorization header: \`Bearer <token>\`
+      
+      ## API Organization
+      The API is organized into logical modules with consistent patterns:
+      - **Public endpoints** (no auth): Configuration, health checks, public invoice access
+      - **User endpoints** (JWT required): Profile management, authentication
+      - **Business endpoints** (JWT + tenant): Invoices, payments, templates, notifications
+      - **Admin endpoints** (JWT + admin): Network/token management, system configuration
     `,
     contact: {
       name: 'Fluxion API Support',
@@ -1106,6 +1116,296 @@ const swaggerDefinition = {
             example: '0x742d35Cc6635C0532925a3b8D0aC0199'
           }
         }
+      },
+
+      // Template schemas
+      InvoiceTemplate: {
+        type: 'object',
+        required: ['id', 'organization_id', 'name', 'template_data', 'is_default', 'created_at', 'updated_at'],
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid',
+            example: '123e4567-e89b-12d3-a456-426614174000'
+          },
+          organization_id: {
+            type: 'string',
+            format: 'uuid',
+            example: '456e7890-e89b-12d3-a456-426614174001'
+          },
+          name: {
+            type: 'string',
+            example: 'Professional Services Template'
+          },
+          description: {
+            type: 'string',
+            example: 'Template for professional services invoices'
+          },
+          template_data: {
+            type: 'object',
+            properties: {
+              branding: {
+                type: 'object',
+                properties: {
+                  logo_url: {
+                    type: 'string',
+                    format: 'uri',
+                    example: 'https://example.com/logo.png'
+                  },
+                  company_name: {
+                    type: 'string',
+                    example: 'Acme Corporation'
+                  },
+                  primary_color: {
+                    type: 'string',
+                    example: '#007bff'
+                  }
+                }
+              },
+              default_payment_terms: {
+                type: 'string',
+                example: 'Net 30 days'
+              },
+              default_notes: {
+                type: 'string',
+                example: 'Thank you for your business'
+              }
+            }
+          },
+          is_default: {
+            type: 'boolean',
+            example: false
+          },
+          usage_count: {
+            type: 'integer',
+            minimum: 0,
+            example: 15
+          },
+          created_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:30:00.000Z'
+          },
+          updated_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:30:00.000Z'
+          }
+        }
+      },
+      CreateTemplateRequest: {
+        type: 'object',
+        required: ['name', 'template_data'],
+        properties: {
+          name: {
+            type: 'string',
+            maxLength: 100,
+            example: 'Professional Services Template'
+          },
+          description: {
+            type: 'string',
+            maxLength: 500,
+            example: 'Template for professional services invoices'
+          },
+          template_data: {
+            type: 'object',
+            description: 'Template configuration and branding data'
+          },
+          is_default: {
+            type: 'boolean',
+            example: false
+          }
+        }
+      },
+
+      // Access Token schemas
+      InvoiceAccessToken: {
+        type: 'object',
+        required: ['id', 'invoice_id', 'token', 'expires_at', 'created_at'],
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid',
+            example: '123e4567-e89b-12d3-a456-426614174000'
+          },
+          invoice_id: {
+            type: 'string',
+            format: 'uuid',
+            example: '456e7890-e89b-12d3-a456-426614174001'
+          },
+          token: {
+            type: 'string',
+            example: 'tok_1234567890abcdef'
+          },
+          expires_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-02-15T10:30:00.000Z'
+          },
+          accessed_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-20T14:15:00.000Z'
+          },
+          access_count: {
+            type: 'integer',
+            minimum: 0,
+            example: 3
+          },
+          created_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:30:00.000Z'
+          }
+        }
+      },
+
+      // Notification schemas
+      NotificationQueue: {
+        type: 'object',
+        required: ['id', 'organization_id', 'type', 'recipient_email', 'status', 'created_at'],
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid',
+            example: '123e4567-e89b-12d3-a456-426614174000'
+          },
+          organization_id: {
+            type: 'string',
+            format: 'uuid',
+            example: '456e7890-e89b-12d3-a456-426614174001'
+          },
+          type: {
+            type: 'string',
+            enum: ['invoice_sent', 'payment_received', 'payment_reminder', 'payment_overdue', 'invoice_cancelled'],
+            example: 'invoice_sent'
+          },
+          recipient_email: {
+            type: 'string',
+            format: 'email',
+            example: 'client@example.com'
+          },
+          template_data: {
+            type: 'object',
+            description: 'Data for email template rendering'
+          },
+          status: {
+            type: 'string',
+            enum: ['pending', 'processing', 'sent', 'failed', 'retry'],
+            example: 'sent'
+          },
+          channels: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['email', 'webhook', 'sms']
+            },
+            example: ['email']
+          },
+          priority: {
+            type: 'string',
+            enum: ['high', 'medium', 'low'],
+            example: 'medium'
+          },
+          retry_count: {
+            type: 'integer',
+            minimum: 0,
+            example: 0
+          },
+          sent_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:35:00.000Z'
+          },
+          error_message: {
+            type: 'string',
+            example: 'SMTP connection failed'
+          },
+          created_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:30:00.000Z'
+          }
+        }
+      },
+
+      // Background Job schemas
+      PaymentVerificationJob: {
+        type: 'object',
+        required: ['id', 'organization_id', 'invoice_id', 'job_type', 'job_data', 'status', 'created_at'],
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid',
+            example: '123e4567-e89b-12d3-a456-426614174000'
+          },
+          organization_id: {
+            type: 'string',
+            format: 'uuid',
+            example: '456e7890-e89b-12d3-a456-426614174001'
+          },
+          invoice_id: {
+            type: 'string',
+            format: 'uuid',
+            example: '789e1234-e89b-12d3-a456-426614174002'
+          },
+          job_type: {
+            type: 'string',
+            enum: ['payment_verification', 'scheduled_notification', 'reminder_escalation'],
+            example: 'payment_verification'
+          },
+          job_data: {
+            type: 'object',
+            properties: {
+              transaction_hash: {
+                type: 'string',
+                pattern: '^0x[a-fA-F0-9]{64}$',
+                example: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'
+              },
+              network_id: {
+                type: 'integer',
+                example: 137
+              },
+              expected_amount: {
+                type: 'string',
+                example: '1000.00'
+              }
+            }
+          },
+          status: {
+            type: 'string',
+            enum: ['pending', 'processing', 'completed', 'failed', 'retry'],
+            example: 'completed'
+          },
+          retry_count: {
+            type: 'integer',
+            minimum: 0,
+            example: 0
+          },
+          scheduled_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:30:00.000Z'
+          },
+          processed_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:32:00.000Z'
+          },
+          result: {
+            type: 'object',
+            description: 'Job execution result data'
+          },
+          error_message: {
+            type: 'string',
+            example: 'Transaction not found on blockchain'
+          },
+          created_at: {
+            type: 'string',
+            format: 'date-time',
+            example: '2024-01-15T10:30:00.000Z'
+          }
+        }
       }
     },
     parameters: {
@@ -1251,6 +1551,46 @@ const swaggerDefinition = {
           type: 'string',
           format: 'uuid'
         }
+      },
+      TemplateIdParam: {
+        name: 'templateId',
+        in: 'path',
+        description: 'Unique identifier for the template',
+        required: true,
+        schema: {
+          type: 'string',
+          format: 'uuid'
+        }
+      },
+      NotificationIdParam: {
+        name: 'notificationId',
+        in: 'path',
+        description: 'Unique identifier for the notification',
+        required: true,
+        schema: {
+          type: 'string',
+          format: 'uuid'
+        }
+      },
+      JobIdParam: {
+        name: 'jobId',
+        in: 'path',
+        description: 'Unique identifier for the background job',
+        required: true,
+        schema: {
+          type: 'string',
+          format: 'uuid'
+        }
+      },
+      AccessTokenParam: {
+        name: 'token',
+        in: 'path',
+        description: 'Client access token for public invoice viewing',
+        required: true,
+        schema: {
+          type: 'string',
+          example: 'tok_1234567890abcdef'
+        }
       }
     },
     responses: {
@@ -1352,35 +1692,55 @@ const swaggerDefinition = {
   tags: [
     {
       name: 'Authentication',
-      description: 'Wallet-based authentication and user session management'
+      description: 'Wallet-based authentication with challenge/response flow and JWT token management'
     },
     {
-      name: 'Users',
-      description: 'User profile and account management'
+      name: 'Users', 
+      description: 'User profile management, statistics, and notification preferences'
     },
     {
       name: 'Invoices',
-      description: 'Invoice creation, management, and lifecycle operations'
+      description: 'Complete invoice lifecycle: creation, management, payment processing, and analytics'
+    },
+    {
+      name: 'Templates',
+      description: 'Invoice template management with organization branding and customization'
     },
     {
       name: 'Payments',
-      description: 'Blockchain payment processing and verification'
+      description: 'Blockchain payment verification, processing, and transaction management'
+    },
+    {
+      name: 'Public',
+      description: 'Public endpoints for client invoice access and payment processing (no authentication)'
+    },
+    {
+      name: 'Notifications',
+      description: 'Email notification management, preferences, and delivery status'
+    },
+    {
+      name: 'Background Jobs',
+      description: 'Background job processing for payment verification and automated tasks'
     },
     {
       name: 'Configuration',
-      description: 'Blockchain networks, tokens, and application configuration',
+      description: 'Blockchain networks, tokens, and application configuration management',
       externalDocs: {
         description: 'Configuration API Guide',
         url: 'https://docs.fluxion.dev/api/configuration'
       }
     },
     {
+      name: 'Admin',
+      description: 'Administrative endpoints for network/token management and system configuration'
+    },
+    {
       name: 'Analytics',
-      description: 'Statistics and reporting endpoints'
+      description: 'Business intelligence, dashboard metrics, and reporting endpoints'
     },
     {
       name: 'Health',
-      description: 'System health and status monitoring'
+      description: 'System health monitoring, status checks, and service connectivity'
     }
   ]
 };
