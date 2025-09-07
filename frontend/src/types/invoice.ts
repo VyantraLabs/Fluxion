@@ -115,6 +115,7 @@ export interface CreateInvoiceRequest {
   dueDate?: string; // ISO string
   networkId: number; // Changed to number (chainId) to match backend
   tokenId: string;
+  status?: 'draft' | 'created' | 'initiated' | 'sent'; // Support for status-based creation
 }
 
 // Invoice update request (matches backend API)

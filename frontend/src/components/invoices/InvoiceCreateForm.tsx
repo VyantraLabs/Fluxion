@@ -188,21 +188,22 @@ export const InvoiceCreateForm: React.FC<InvoiceCreateFormProps> = ({
       setIsSaving(true);
       
       const draftData: CreateInvoiceRequest = {
-        title: formData.title,
+        title: formData.title || 'Untitled Draft',
         description: formData.description,
         clientName: formData.clientName,
         clientEmail: formData.clientEmail,
         amount: parseFloat(formData.amount) || 0,
         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined,
-        networkId: parseInt(formData.networkId), // Convert to chainId number
+        networkId: parseInt(formData.networkId) || undefined,
         tokenId: formData.tokenId,
+        status: 'draft'
       };
 
       let response;
       if (templateId) {
         response = await invoiceApi.createFromTemplate(templateId, draftData);
       } else {
-        response = await invoiceApi.create(draftData);
+        response = await invoiceApi.saveDraft(draftData);
       }
 
       const invoice = handleApiResponse(response);
@@ -247,8 +248,9 @@ export const InvoiceCreateForm: React.FC<InvoiceCreateFormProps> = ({
         clientEmail: formData.clientEmail,
         amount: parseFloat(formData.amount) || 0,
         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined,
-        networkId: parseInt(formData.networkId), // Convert to chainId number
+        networkId: parseInt(formData.networkId),
         tokenId: formData.tokenId,
+        status: sendImmediately && formData.clientEmail ? 'sent' : 'created'
       };
 
       let response;

@@ -167,7 +167,7 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // Convert summary to full config format
         const networks: NetworkConfig[] = summary.networks.map(n => ({
-          id: `network-${n.chainId}`,
+          id: n.chainId.toString(), // Use chainId as string ID for consistency with backend
           chainId: n.chainId,
           name: n.name,
           symbol: n.symbol,
@@ -183,7 +183,7 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const tokens: TokenConfig[] = summary.tokens.map(t => ({
           id: `token-${t.symbol}-${t.networkId}`,
-          networkId: t.networkId,
+          networkId: t.networkId, // Keep networkId as is from backend
           contractAddress: t.contractAddress,
           symbol: t.symbol,
           name: t.name,

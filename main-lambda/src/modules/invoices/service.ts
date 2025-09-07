@@ -20,6 +20,7 @@ export interface CreateInvoiceDto {
   clientWallet?: string;
   networkId: string;
   tokenId: string;
+  status?: 'draft' | 'created' | 'initiated' | 'sent';
 }
 
 export interface PublicInvoiceDto {
@@ -91,20 +92,22 @@ export class InvoiceService {
         organization.slug
       );
 
-      // Create invoice
+      // Create invoice with specified status
+      const invoiceStatus = data.status || 'draft';
+      
       const invoice = await this.invoiceRepository.create(tenantContext, {
         invoiceNumber,
-        title: data.title,
-        description: data.description,
-        clientName: data.clientName,
-        clientEmail: data.clientEmail,
+        title: data.title || 'Untitled Draft',
+        description: data.description || '',
+        clientName: data.clientName || '',
+        clientEmail: data.clientEmail || '',
         clientWallet: data.clientWallet,
-        amount: data.amount.toString(),
-        dueDate: new Date(data.dueDate),
-        networkId: data.networkId,
-        tokenId: data.tokenId,
+        amount: data.amount !== undefined ? data.amount.toString() : (invoiceStatus === 'draft' ? '0.01' : '0'),
+        dueDate: data.dueDate ? new Date(data.dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Default 30 days
+        chainId: data.networkId || 137, // Default to Polygon
+        tokenId: data.tokenId || '01K4FSGT1H900EYCV2DNY21710', // Default USDC on Polygon
         createdBy: userId, // Use the userId directly
-        status: 'draft',
+        status: invoiceStatus,
       });
 
       this.logger.info('Invoice created successfully', { 

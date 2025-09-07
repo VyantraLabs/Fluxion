@@ -23,7 +23,7 @@ import { InvoiceAccessToken } from './InvoiceAccessToken';
 import { NotificationQueue } from './NotificationQueue';
 import { PaymentVerificationJob } from './PaymentVerificationJob';
 
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'partial';
+export type InvoiceStatus = 'draft' | 'created' | 'initiated' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'partial';
 
 @Entity('invoices')
 @Index(['invoiceNumber', 'organizationId'], { unique: true })
@@ -36,7 +36,7 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' 
 @Index(['clientEmail'])
 @Check('amount_positive', 'amount > 0')
 @Check('client_wallet_format', "client_wallet ~* '^0x[a-fA-F0-9]{40}$' OR client_wallet IS NULL")
-@Check('status_valid', "status IN ('draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial')")
+@Check('status_valid', "status IN ('draft', 'created', 'initiated', 'sent', 'paid', 'overdue', 'cancelled', 'partial')")
 export class Invoice {
   @PrimaryColumn({ type: 'varchar' })
   id!: string;

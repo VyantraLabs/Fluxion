@@ -129,7 +129,7 @@ export interface LineItem {
   amount: number;
 }
 
-export type InvoiceStatus = 'draft' | 'pending' | 'paid' | 'expired' | 'cancelled';
+export type InvoiceStatus = 'draft' | 'created' | 'initiated' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'partial';
 export type PaymentStatus = 'pending' | 'confirmed' | 'failed';
 
 export interface InvoiceData {

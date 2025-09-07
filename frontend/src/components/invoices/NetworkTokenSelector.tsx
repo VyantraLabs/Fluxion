@@ -60,7 +60,9 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
     },
   }));
 
-  const selectedNetwork = networksWithTokens.find(n => n.chainId.toString() === selectedNetworkId);
+  const selectedNetwork = networksWithTokens.find(n => 
+    n.chainId.toString() === selectedNetworkId || n.id === selectedNetworkId
+  );
   const selectedToken = selectedNetwork?.tokens.find(t => t.id === selectedTokenId);
   const availableTokens = selectedNetwork?.tokens || [];
 
@@ -68,7 +70,8 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
   useEffect(() => {
     if (networksWithTokens.length > 0 && !selectedNetworkId && config.isLoaded) {
       const firstNetwork = networksWithTokens[0];
-      onNetworkChange(firstNetwork.chainId.toString());
+      // Use the network's ID (which should match the chainId as string)
+      onNetworkChange(firstNetwork.id);
     }
   }, [networksWithTokens, selectedNetworkId, onNetworkChange, config.isLoaded]);
 
@@ -81,12 +84,14 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
     }
   }, [selectedNetwork, selectedTokenId, onTokenChange]);
 
-  const handleNetworkSelect = (chainId: string) => {
-    onNetworkChange(chainId);
+  const handleNetworkSelect = (networkId: string) => {
+    onNetworkChange(networkId);
     setIsNetworkDropdownOpen(false);
     
     // Reset token selection when network changes
-    const newNetwork = networksWithTokens.find(n => n.chainId.toString() === chainId);
+    const newNetwork = networksWithTokens.find(n => 
+      n.chainId.toString() === networkId || n.id === networkId
+    );
     if (newNetwork?.tokens.length > 0) {
       const stablecoin = newNetwork.tokens.find(t => t.isStablecoin);
       const defaultToken = stablecoin || newNetwork.tokens[0];
@@ -199,7 +204,7 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
                     <button
                       key={network.chainId}
                       type="button"
-                      onClick={() => handleNetworkSelect(network.chainId.toString())}
+                      onClick={() => handleNetworkSelect(network.id)}
                       className="w-full flex items-center px-3 py-2 text-left hover:bg-secondary-50 transition-colors"
                     >
                       {network.metadata?.logo && (
@@ -222,7 +227,7 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
                           Chain ID: {network.chainId} • {network.tokens.length} tokens
                         </div>
                       </div>
-                      {selectedNetworkId === network.chainId.toString() && (
+                      {(selectedNetworkId === network.chainId.toString() || selectedNetworkId === network.id) && (
                         <CheckCircle className="w-4 h-4 text-primary-600" />
                       )}
                     </button>

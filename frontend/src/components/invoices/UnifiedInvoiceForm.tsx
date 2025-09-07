@@ -310,17 +310,49 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
     setCurrentStep(prev => Math.max(prev - 1, 0));
   }, []);
 
-  const buildInvoiceData = useCallback((): CreateInvoiceRequest => {
+  const buildInvoiceData = useCallback((): any => {
     return {
-      title: formData.title.trim(),
+      title: formData.title.trim() || undefined,
       description: formData.description.trim() || undefined,
       clientName: formData.clientName.trim() || undefined,
       clientEmail: formData.clientEmail.trim() || undefined,
-      amount: formData.amount.trim(),
+      amount: formData.amount.trim() || undefined,
       dueDate: formData.dueDate || undefined,
-      networkId: formData.networkId,
-      tokenId: formData.tokenId,
+      networkId: formData.networkId?.toString() || undefined,
+      tokenId: formData.tokenId || undefined,
     };
+  }, [formData]);
+
+  const buildDraftData = useCallback((): any => {
+    const draftData: any = {};
+    
+    // Only include fields that have actual values (not empty strings)
+    if (formData.title?.trim()) {
+      draftData.title = formData.title.trim();
+    }
+    if (formData.description?.trim()) {
+      draftData.description = formData.description.trim();
+    }
+    if (formData.clientName?.trim()) {
+      draftData.clientName = formData.clientName.trim();
+    }
+    if (formData.clientEmail?.trim()) {
+      draftData.clientEmail = formData.clientEmail.trim();
+    }
+    if (formData.amount?.trim()) {
+      draftData.amount = formData.amount.trim();
+    }
+    if (formData.dueDate) {
+      draftData.dueDate = formData.dueDate;
+    }
+    if (formData.networkId) {
+      draftData.networkId = formData.networkId.toString();
+    }
+    if (formData.tokenId) {
+      draftData.tokenId = formData.tokenId;
+    }
+    
+    return draftData;
   }, [formData]);
 
   const handleSaveDraft = useCallback(async () => {
@@ -330,16 +362,16 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
       setIsSaving(true);
       setErrors({});
       
-      const invoiceData = buildInvoiceData();
+      const draftData = buildDraftData();
 
       if (onSubmit) {
-        await onSubmit(invoiceData);
+        await onSubmit(draftData);
       } else {
         let response;
         if (templateId) {
-          response = await invoiceApi.createFromTemplate(templateId, invoiceData);
+          response = await invoiceApi.createFromTemplate(templateId, draftData);
         } else {
-          response = await invoiceApi.create(invoiceData);
+          response = await invoiceApi.saveDraft(draftData);
         }
 
         const invoice = handleApiResponse(response);
@@ -357,7 +389,22 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
       }
     } catch (error: any) {
       console.error('Failed to save draft:', error);
-      setErrors({ general: error.message || 'Failed to save invoice' });
+      
+      // Handle validation errors from backend
+      if (error.details && Array.isArray(error.details)) {
+        const newErrors: FormErrors = {};
+        error.details.forEach((validationError: any) => {
+          newErrors[validationError.field as keyof FormErrors] = validationError.message;
+        });
+        setErrors(newErrors);
+        
+        // Show toast with first validation error
+        const firstError = error.details[0];
+        toast.error(`Validation Error: ${firstError.message}`);
+      } else {
+        setErrors({ general: error.message || 'Failed to save draft' });
+        toast.error(error.message || 'Failed to save draft');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -427,15 +474,20 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
     } catch (error: any) {
       console.error('Failed to create invoice:', error);
       
-      if (error.validation_errors) {
-        // Handle validation errors from backend
+      // Handle validation errors from backend
+      if (error.details && Array.isArray(error.details)) {
         const newErrors: FormErrors = {};
-        error.validation_errors.forEach((validationError: any) => {
+        error.details.forEach((validationError: any) => {
           newErrors[validationError.field as keyof FormErrors] = validationError.message;
         });
         setErrors(newErrors);
+        
+        // Show toast with first validation error
+        const firstError = error.details[0];
+        toast.error(`Validation Error: ${firstError.message}`);
       } else {
         setErrors({ general: error.message || 'Failed to create invoice' });
+        toast.error(error.message || 'Failed to create invoice');
       }
     } finally {
       setIsSubmitting(false);

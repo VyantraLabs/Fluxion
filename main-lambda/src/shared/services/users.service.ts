@@ -115,12 +115,12 @@ export class UsersService {
       }
 
       // Get the organization information
-      const organization = await repositories.organizations.findById(tenantContext.tenantId);
+      const organization = await repositories.organizations.findById(user.organizationId);
 
       // Transform to UserRecord format for compatibility
       const userRecord: UserRecord = {
         id: user.id,
-        tenant_id: tenantContext.tenantId,
+        tenant_id: user.organizationId, // Use the user's actual organization ID as tenant ID
         wallet_address: user.walletAddress || '',
         email: user.email,
         profile: {
@@ -410,7 +410,7 @@ export class UsersService {
       // Transform to UserRecord format for compatibility
       const userRecord: UserRecord = {
         id: updatedUser.id,
-        tenant_id: tenantContext.tenantId,
+        tenant_id: updatedUser.organizationId, // Use the user's actual organization ID as tenant ID
         wallet_address: updatedUser.walletAddress || '',
         email: updatedUser.email,
         profile: {
@@ -427,7 +427,8 @@ export class UsersService {
           last_active_at: new Date().toISOString()
         },
         created_at: updatedUser.createdAt.toISOString(),
-        updated_at: updatedUser.updatedAt.toISOString()
+        updated_at: updatedUser.updatedAt.toISOString(),
+        organization: currentUser.organization
       };
 
       return userRecord;

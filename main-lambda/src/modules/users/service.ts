@@ -59,13 +59,13 @@ export class UserService {
       // Use the shared users service to check if user exists first
       const { UsersService } = await import('@/shared/services/users.service');
       const usersService = new UsersService(this.db);
-      const defaultTenantContext = { tenantId: 'default' }; // Use 'default' which will be resolved to proper ULID
       
       // Check if user exists - DO NOT CREATE if not found
+      // Note: getUserByWallet does cross-tenant search, so tenant context is not used for filtering
       let userRecord: any;
       
       try {
-        userRecord = await usersService.getUserByWallet(defaultTenantContext, data.wallet_address);
+        userRecord = await usersService.getUserByWallet({ tenantId: '' }, data.wallet_address);
         this.logger.info('Existing user found for authentication', { 
           wallet_address: data.wallet_address, 
           user_id: userRecord.id 
@@ -180,11 +180,10 @@ export class UserService {
       // Use the shared users service to create user with organization
       const { UsersService } = await import('@/shared/services/users.service');
       const usersService = new UsersService(this.db);
-      const defaultTenantContext = { tenantId: 'default' };
       
       // Check if user already exists
       try {
-        const existingUser = await usersService.getUserByWallet(defaultTenantContext, data.wallet_address);
+        const existingUser = await usersService.getUserByWallet({ tenantId: '' }, data.wallet_address);
         if (existingUser) {
           throw new Error('User already exists. Please use the login flow instead.');
         }
@@ -195,8 +194,8 @@ export class UserService {
         }
       }
 
-      // Create new user with organization
-      const userRecord = await usersService.createUser(defaultTenantContext, {
+      // Create new user with organization  
+      const userRecord = await usersService.createUser({ tenantId: '' }, {
         wallet_address: data.wallet_address,
         organizationName: data.organizationName || `${data.wallet_address.substring(0, 8)}'s Organization`,
         email: data.email,
@@ -307,15 +306,15 @@ export class UserService {
     this.logger.info('Finding user by wallet address', { wallet_address: walletAddress });
 
     try {
-      // Use the shared users service with proper tenant resolution
+      // Use the shared users service with cross-tenant search capability
       const { UsersService } = await import('@/shared/services/users.service');
       const usersService = new UsersService(this.db);
-      const defaultTenantContext = { tenantId: 'default' }; // Use 'default' which will be resolved to proper ULID
 
       // Try to get existing user, if not found return null
+      // Note: getUserByWallet does cross-tenant search, so tenant context is ignored
       let userRecord;
       try {
-        userRecord = await usersService.getUserByWallet(defaultTenantContext, walletAddress);
+        userRecord = await usersService.getUserByWallet({ tenantId: '' }, walletAddress);
       } catch (error: any) {
         this.logger.debug('getUserByWallet error details', { 
           wallet_address: walletAddress,

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { InvoiceService, CreateInvoiceDto } from './service';
 import { 
   CreateInvoiceSchema, 
+  CreateDraftInvoiceSchema,
   UpdateInvoiceStatusSchema, 
   InvoiceFilterSchema,
   InvoiceIdSchema
@@ -27,8 +28,11 @@ const logger = new Logger('InvoiceHandlers');
  *   post:
  *     tags:
  *       - Invoices
- *     summary: Create a new invoice
- *     description: Creates a new invoice for the authenticated user with specified payment details
+ *     summary: Create a new invoice with status support
+ *     description: |
+ *       Creates a new invoice for the authenticated user with specified payment details.
+ *       Supports creating invoices in different states: draft, created, initiated, or sent.
+ *       Draft invoices allow partial data for saving work in progress.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -37,12 +41,6 @@ const logger = new Logger('InvoiceHandlers');
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - title
- *               - amount
- *               - dueDate
- *               - networkId
- *               - tokenId
  *             properties:
  *               title:
  *                 type: string
@@ -72,13 +70,38 @@ const logger = new Logger('InvoiceHandlers');
  *                 format: date-time
  *                 example: "2025-10-15T12:00:00.000Z"
  *               networkId:
- *                 type: string
- *                 format: uuid
- *                 example: "1501e461-3295-4b7c-bd4a-a0643b7c9a93"
+ *                 type: number
+ *                 example: 137
+ *                 description: Blockchain network chain ID
  *               tokenId:
  *                 type: string
  *                 format: uuid
  *                 example: "f6ec8763-b80f-4031-a420-100213e0be73"
+ *               status:
+ *                 type: string
+ *                 enum: [draft, created, initiated, sent]
+ *                 default: draft
+ *                 example: "draft"
+ *                 description: Invoice status - draft allows partial data
+ *           examples:
+ *             complete_invoice:
+ *               summary: Complete invoice ready to send
+ *               value:
+ *                 title: "Web Development Services"
+ *                 description: "Frontend development and smart contract integration"
+ *                 clientName: "Acme Corporation"
+ *                 clientEmail: "client@acme.com"
+ *                 clientWallet: "0x742d35Cc6635C0532925a3b8D0aC0199845F8A0E"
+ *                 amount: 2500.00
+ *                 dueDate: "2025-10-15T12:00:00.000Z"
+ *                 networkId: 137
+ *                 tokenId: "f6ec8763-b80f-4031-a420-100213e0be73"
+ *                 status: "created"
+ *             draft_invoice:
+ *               summary: Draft invoice with minimal data
+ *               value:
+ *                 title: "Project Draft"
+ *                 status: "draft"
  *     responses:
  *       201:
  *         description: Invoice created successfully
@@ -102,35 +125,77 @@ const logger = new Logger('InvoiceHandlers');
 router.post('/', 
   authenticateJWT,
   extractTenantContext(),
-  validateRequest({ body: CreateInvoiceSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const userId = req.context?.userId!; // Use userId from JWT token
     const walletAddress = req.context?.walletAddress!; // For logging
     
-    const invoiceData: CreateInvoiceDto = {
-      title: req.body.title,
-      description: req.body.description,
-      clientName: req.body.clientName,
-      clientEmail: req.body.clientEmail,
-      clientWallet: req.body.clientWallet,
-      amount: req.body.amount,
-      dueDate: req.body.dueDate,
-      networkId: req.body.networkId,
-      tokenId: req.body.tokenId
-    };
+    // Determine the requested status 
+    const requestedStatus = req.body.status || 'draft';
+    const isDraft = requestedStatus === 'draft';
     
-    const invoice = await invoiceService.createInvoice(tenantContext, userId, invoiceData);
-    
-    logger.info('Invoice created via API', { 
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.invoiceNumber,
-      userId,
-      walletAddress
-    });
-    res.success(invoice, 201);
+    try {
+      // Set the status in the request body for validation
+      const requestBodyWithStatus = { ...req.body, status: requestedStatus };
+      
+      // Use unified validation schema - it will handle draft vs complete validation automatically
+      const validatedBody = CreateInvoiceSchema.parse(requestBodyWithStatus);
+      
+      // Build invoice data, only including fields that are provided
+      const invoiceData: Partial<CreateInvoiceDto> = {
+        status: requestedStatus
+      };
+      
+      // Only add fields that were actually provided (not undefined)
+      if (validatedBody.title !== undefined) invoiceData.title = validatedBody.title;
+      if (validatedBody.description !== undefined) invoiceData.description = validatedBody.description;
+      if (validatedBody.clientName !== undefined) invoiceData.clientName = validatedBody.clientName;
+      if (validatedBody.clientEmail !== undefined) invoiceData.clientEmail = validatedBody.clientEmail;
+      if (validatedBody.clientWallet !== undefined) invoiceData.clientWallet = validatedBody.clientWallet;
+      if (validatedBody.amount !== undefined) invoiceData.amount = validatedBody.amount;
+      if (validatedBody.dueDate !== undefined) invoiceData.dueDate = validatedBody.dueDate;
+      if (validatedBody.networkId !== undefined) invoiceData.networkId = validatedBody.networkId.toString();
+      if (validatedBody.tokenId !== undefined) invoiceData.tokenId = validatedBody.tokenId;
+      
+      // For drafts, save exactly as provided by user - no defaults or modifications
+      
+      const invoice = await invoiceService.createInvoice(tenantContext, userId, invoiceData as CreateInvoiceDto);
+      
+      logger.info('Invoice created via unified API', { 
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: requestedStatus,
+        isDraft,
+        userId,
+        walletAddress,
+        tenantId: tenantContext.tenantId
+      });
+      
+      res.success(invoice, 201);
+    } catch (validationError: any) {
+      if (validationError.name === 'ZodError') {
+        const formattedErrors = validationError.errors.map((err: any) => ({
+          field: err.path.join('.'),
+          message: err.message,
+          code: err.code
+        }));
+        
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid request data',
+            details: formattedErrors
+          }
+        });
+      }
+      throw validationError;
+    }
   })
 );
+
+// DEPRECATED: /invoices/draft endpoint removed in favor of unified POST /invoices with status parameter
+// Use POST /invoices with { "status": "draft" } instead
 
 /**
  * @swagger

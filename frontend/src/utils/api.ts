@@ -12,7 +12,7 @@ const createApiClient = (): AxiosInstance => {
       'Content-Type': 'application/json',
       'X-Client-Version': '1.0.0',
       'X-Request-Source': 'frontend',
-      'X-Tenant-ID': 'default', // Required for multi-tenant backend
+      // Tenant ID will be extracted from JWT token by backend middleware
     },
   });
 
@@ -267,7 +267,11 @@ export const userApi = {
 
 export const invoiceApi = {
   create: (data: any) =>
-    apiRequest.post(apiEndpoints.invoices.base, data),
+    apiRequest.post(apiEndpoints.invoices.base, { ...data, status: data.status || 'created' }),
+  saveDraft: (data: any) =>
+    apiRequest.post(apiEndpoints.invoices.base, { ...data, status: 'draft' }),
+  createWithStatus: (data: any, status: 'draft' | 'created' | 'initiated' | 'sent') =>
+    apiRequest.post(apiEndpoints.invoices.base, { ...data, status }),
 
   getById: (id: string) =>
     apiRequest.get(apiEndpoints.invoices.byId(id)),

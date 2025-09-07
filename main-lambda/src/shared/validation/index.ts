@@ -96,32 +96,90 @@ export const ValidateAddressSchema = z.object({
     .min(1, 'Address is required')
 });
 
-// Invoice schemas
-export const CreateInvoiceSchema = z.object({
+// Base invoice schema - all fields optional for flexibility
+const BaseInvoiceSchema = z.object({
   title: z.string()
-    .min(1, 'Title is required')
     .max(255, 'Title too long')
-    .trim(),
+    .trim()
+    .optional(),
   description: z.string()
-    .min(1, 'Description is required')
     .max(500, 'Description too long')
-    .trim(),
+    .trim()
+    .optional(),
   clientName: z.string()
-    .min(1, 'Client name is required')
     .max(255, 'Client name too long')
-    .trim(),
-  clientEmail: emailSchema,
+    .trim()
+    .optional(),
+  clientEmail: z.string()
+    .email('Invalid email format')
+    .max(255, 'Email too long')
+    .optional(),
   clientWallet: walletAddress.optional(),
-  amount: z.number()
-    .min(CONSTANTS.MIN_INVOICE_AMOUNT, `Amount must be at least ${CONSTANTS.MIN_INVOICE_AMOUNT}`)
-    .max(CONSTANTS.MAX_INVOICE_AMOUNT, `Amount cannot exceed ${CONSTANTS.MAX_INVOICE_AMOUNT}`),
+  amount: z.union([z.number(), z.string()])
+    .optional()
+    .transform((val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(num) ? undefined : num;
+    }),
   dueDate: z.string()
-    .datetime('Invalid due date format'),
-  networkId: z.number()
-    .int('Network ID must be an integer')
-    .positive('Network ID must be positive'),
-  tokenId: idSchema
+    .datetime('Invalid due date format')
+    .optional(),
+  networkId: z.union([z.number(), z.string()])
+    .optional()
+    .transform((val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const num = typeof val === 'string' ? parseInt(val, 10) : val;
+      return isNaN(num) ? undefined : num;
+    }),
+  tokenId: z.union([idSchema, z.string().length(0)]).optional().transform((val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    return val;
+  }),
+  status: z.enum(['draft', 'created', 'initiated', 'sent'] as const).optional().default('draft')
 });
+
+// Dynamic validation based on status
+export const CreateInvoiceSchema = BaseInvoiceSchema.superRefine((data, ctx) => {
+  const status = data.status || 'draft';
+  
+  // Draft status - NO validation whatsoever
+  // Users can save with any combination of fields
+  if (status === 'draft') {
+    return; // Skip all validation for drafts
+  }
+  
+  // For created, initiated, or sent status - require all fields
+  if (status === 'created' || status === 'initiated' || status === 'sent') {
+    if (!data.title || data.title.trim().length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'Title is required for non-draft invoices', path: ['title'] });
+    }
+    if (!data.description || data.description.trim().length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'Description is required for non-draft invoices', path: ['description'] });
+    }
+    if (!data.clientName || data.clientName.trim().length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'Client name is required for non-draft invoices', path: ['clientName'] });
+    }
+    if (!data.clientEmail) {
+      ctx.addIssue({ code: 'custom', message: 'Client email is required for non-draft invoices', path: ['clientEmail'] });
+    }
+    if (data.amount === undefined || data.amount < CONSTANTS.MIN_INVOICE_AMOUNT) {
+      ctx.addIssue({ code: 'custom', message: `Amount must be at least ${CONSTANTS.MIN_INVOICE_AMOUNT} for non-draft invoices`, path: ['amount'] });
+    }
+    if (!data.dueDate) {
+      ctx.addIssue({ code: 'custom', message: 'Due date is required for non-draft invoices', path: ['dueDate'] });
+    }
+    if (data.networkId === undefined || data.networkId <= 0) {
+      ctx.addIssue({ code: 'custom', message: 'Network ID is required for non-draft invoices', path: ['networkId'] });
+    }
+    if (!data.tokenId) {
+      ctx.addIssue({ code: 'custom', message: 'Token ID is required for non-draft invoices', path: ['tokenId'] });
+    }
+  }
+});
+
+// For backward compatibility - now using unified CreateInvoiceSchema
+export const CreateDraftInvoiceSchema = CreateInvoiceSchema;
 
 export const UpdateInvoiceStatusSchema = z.object({
   status: z.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled', 'partial'] as const)
@@ -352,6 +410,7 @@ export const CompleteOnboardingSchema = z.object({
 
 // Export types
 export type CreateInvoiceRequest = z.infer<typeof CreateInvoiceSchema>;
+export type CreateDraftInvoiceRequest = z.infer<typeof CreateDraftInvoiceSchema>;
 export type UpdateInvoiceStatusRequest = z.infer<typeof UpdateInvoiceStatusSchema>;
 export type AuthenticateWalletRequest = z.infer<typeof AuthenticateWalletSchema>;
 export type UpdateUserProfileRequest = z.infer<typeof UpdateUserProfileSchema>;

@@ -215,6 +215,16 @@ class InvoiceApiClient {
   }
 
   /**
+   * Save invoice as draft
+   */
+  async saveDraft(data: Partial<CreateInvoiceRequest>): Promise<Invoice> {
+    return this.request<Invoice>('/invoices/draft', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
    * Create invoice (alias for backward compatibility)
    */
   async create(data: CreateInvoiceRequest): Promise<Invoice> {

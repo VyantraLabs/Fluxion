@@ -19,21 +19,28 @@ export const extractTenantContext = () => {
       let userId: string | undefined;
       let walletAddress: string | undefined;
 
-      // Try to extract from JWT token first (if authenticated)
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        try {
-          const token = authHeader.substring(7);
-          const decoded = jwt.decode(token) as any;
-          
-          if (decoded) {
-            tenantId = decoded.tenant_id || '01HBXYZ0000000000000000000'; // Default tenant ULID
-            userId = decoded.user_id;
-            walletAddress = decoded.wallet_address;
+      // Try to extract from request context first (if already authenticated)
+      if (req.context?.tenantId) {
+        tenantId = req.context.tenantId;
+        userId = req.context.userId;
+        walletAddress = req.context.walletAddress;
+      } else {
+        // Fallback: Try to extract from JWT token directly (for cases where auth middleware hasn't run)
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          try {
+            const token = authHeader.substring(7);
+            const decoded = jwt.decode(token) as any;
+            
+            if (decoded) {
+              tenantId = decoded.tenant_id || '01HBXYZ0000000000000000000'; // Default tenant ULID
+              userId = decoded.user_id;
+              walletAddress = decoded.wallet_address;
+            }
+          } catch (error) {
+            // JWT decode failed, continue with header/default tenant
+            logger.debug('Failed to decode JWT for tenant context', { error });
           }
-        } catch (error) {
-          // JWT decode failed, continue with header/default tenant
-          logger.debug('Failed to decode JWT for tenant context', { error });
         }
       }
 
