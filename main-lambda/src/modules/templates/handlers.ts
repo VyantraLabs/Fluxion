@@ -19,18 +19,24 @@ const router = Router();
 const templateService = new TemplateService();
 const logger = new Logger('TemplateHandlers');
 
+// =============================================================================
+// TEMPLATE ROUTES (Support both authenticated and unauthenticated access)
+// =============================================================================
+
 /**
  * @swagger
  * /templates:
  *   get:
  *     tags:
  *       - Templates
- *     summary: List invoice templates
+ *     summary: List templates with auth-based access control
  *     description: |
- *       Retrieves a paginated list of invoice templates for the authenticated organization.
- *       Supports filtering by name, status, and creator.
+ *       Retrieves templates with different behavior based on authentication:
+ *       - No auth: Limited read-only public system templates
+ *       - Organization auth: System templates + organization templates
+ *       - Admin auth: All templates including deleted ones (future enhancement)
  *     security:
- *       - bearerAuth: []
+ *       - bearerAuth: [] # Optional
  *     parameters:
  *       - name: limit
  *         in: query
@@ -47,6 +53,18 @@ const logger = new Logger('TemplateHandlers');
  *         required: false
  *         schema:
  *           type: string
+ *       - name: category
+ *         in: query
+ *         description: Filter templates by category ID
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - name: search
+ *         in: query
+ *         description: Search templates by name
+ *         required: false
+ *         schema:
+ *           type: string
  *       - name: name
  *         in: query
  *         description: Filter templates by name (partial match)
@@ -59,12 +77,6 @@ const logger = new Logger('TemplateHandlers');
  *         required: false
  *         schema:
  *           type: boolean
- *       - name: createdBy
- *         in: query
- *         description: Filter templates by creator
- *         required: false
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Templates retrieved successfully
@@ -82,7 +94,7 @@ const logger = new Logger('TemplateHandlers');
  *                     templates:
  *                       type: array
  *                       items:
- *                         $ref: '#/components/schemas/InvoiceTemplate'
+ *                         $ref: '#/components/schemas/Template'
  *                     total:
  *                       type: integer
  *                       example: 42
@@ -94,42 +106,197 @@ const logger = new Logger('TemplateHandlers');
  *                         nextToken:
  *                           type: string
  *                           nullable: true
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
 router.get('/', 
-  authenticateJWT,
-  extractTenantContext(),
+  // Make authentication optional but still extract context if present
+  (req: Request, res: Response, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Authentication present, use normal auth flow
+      return authenticateJWT(req, res, (error?: any) => {
+        if (error) {
+          // Authentication failed, continue as unauthenticated
+          return next();
+        }
+        // Authentication succeeded, extract tenant context
+        return extractTenantContext()(req, res, next);
+      });
+    } else {
+      // No authentication, continue as public access
+      return next();
+    }
+  },
   validateRequest({ query: TemplateFilterSchema }),
   asyncHandler(async (req: Request, res: Response) => {
-    const tenantContext = getTenantContext(req);
-    const { limit, nextToken, name, isActive, createdBy } = req.query as any;
+    const { limit, nextToken, name, search, isActive, categoryId, categoryIds, categories } = req.query as any;
     
-    const result = await templateService.searchTemplates(tenantContext, {
-      name,
-      isActive: isActive !== undefined ? Boolean(isActive) : undefined,
-      createdBy
-    }, {
+    // Check if user is authenticated
+    const isAuthenticated = !!(req.context?.userId);
+    const tenantContext = isAuthenticated ? getTenantContext(req) : {
+      tenantId: '010000000000000000000000', // System tenant
+      userId: null,
+      organizationId: '010000000000000000000000'
+    };
+    
+    // Handle category filtering - accept arrays of category IDs
+    let categoryFilter: string[] | undefined;
+    if (categoryId) {
+      categoryFilter = [categoryId];
+    } else if (categoryIds && categoryIds.length > 0) {
+      categoryFilter = categoryIds;
+    } else if (categories && categories.length > 0) {
+      categoryFilter = categories;
+    }
+    
+    // Build organization filter - system templates + user org templates
+    const organizationIds = isAuthenticated 
+      ? ['010000000000000000000000', tenantContext.tenantId] // System + user org
+      : ['010000000000000000000000']; // Only system for unauthenticated
+    
+    // Build search options
+    let searchOptions: any = {
+      name: name || search, // Support both 'name' and 'search' parameters
+      isActive: isActive !== undefined ? Boolean(isActive) : true, // Default to active templates
+      organizationIds, // Filter by system + user org
+      ...(categoryFilter && categoryFilter.length > 0 && { categoryIds: categoryFilter })
+    };
+    
+    logger.info('Templates requested', { 
+      isAuthenticated,
+      tenantId: isAuthenticated ? tenantContext.tenantId : 'unauthenticated',
+      searchOptions,
+      categoryFilter,
+      limit: limit || 20
+    });
+    
+    const result = await templateService.searchTemplates(tenantContext, searchOptions, {
       limit,
       nextToken
     });
     
-    logger.info('Templates retrieved via API', { 
-      tenantId: tenantContext.tenantId,
-      count: result.items.length,
-      total: result.total
-    });
-    
-    res.success({
-      templates: result.items,
+    // Return appropriate data based on authentication level
+    const responseData = {
+      templates: !isAuthenticated 
+        ? result.items.map(template => ({
+            id: template.id,
+            name: template.name,
+            description: template.description,
+            categoryId: template.categoryId,
+            category: template.category,
+            previewImageUrl: template.previewImageUrl,
+            fullPreviewImageUrl: template.fullPreviewImageUrl,
+            isSystemTemplate: template.isSystemTemplate,
+            createdAt: template.createdAt
+          }))
+        : result.items, // Full data for authenticated users
       total: result.total,
       pagination: {
         hasMore: !!result.nextToken,
         nextToken: result.nextToken
       }
+    };
+    
+    logger.info('Templates retrieved successfully', { 
+      isAuthenticated,
+      tenantId: isAuthenticated ? tenantContext.tenantId : 'unauthenticated',
+      count: result.items.length,
+      total: result.total,
+      organizationIds
     });
+    
+    res.success(responseData);
+  })
+);
+
+/**
+ * @swagger
+ * /templates/categories:
+ *   get:
+ *     tags:
+ *       - Templates
+ *     summary: Get template categories with auth-based access control
+ *     description: |
+ *       Retrieves template categories with different behavior based on authentication:
+ *       - No auth: Public categories with limited information
+ *       - Organization auth: All categories with full details and counts
+ *     security:
+ *       - bearerAuth: [] # Optional
+ *     responses:
+ *       200:
+ *         description: Template categories retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             example: "invoice"
+ *                           name:
+ *                             type: string
+ *                             example: "Invoices"
+ *                           description:
+ *                             type: string
+ *                             example: "Standard invoice templates"
+ *                           count:
+ *                             type: integer
+ *                             example: 12
+ *                           isSystem:
+ *                             type: boolean
+ *                             example: true
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get('/categories', 
+  // Make authentication optional
+  (req: Request, res: Response, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authenticateJWT(req, res, (error?: any) => {
+        if (error) {
+          return next();
+        }
+        return extractTenantContext()(req, res, next);
+      });
+    } else {
+      return next();
+    }
+  },
+  asyncHandler(async (req: Request, res: Response) => {
+    const isAuthenticated = !!(req.context?.userId);
+    const tenantContext = isAuthenticated ? getTenantContext(req) : {
+      tenantId: '00000000-0000-0000-0000-000000000000',
+      userId: null,
+      organizationId: '00000000-0000-0000-0000-000000000000'
+    };
+    
+    const categories = await templateService.getTemplateCategories(tenantContext);
+    
+    if (isAuthenticated) {
+      logger.info('Template categories retrieved via API (authenticated)', { 
+        tenantId: tenantContext.tenantId,
+        categoriesCount: categories.length
+      });
+    } else {
+      logger.info('Public template categories retrieved successfully', {
+        categoriesCount: categories.length
+      });
+    }
+    
+    res.success({ categories });
   })
 );
 
@@ -163,7 +330,7 @@ router.get('/',
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/InvoiceTemplate'
+ *                   $ref: '#/components/schemas/Template'
  *       404:
  *         description: Template not found
  *       401:
@@ -257,7 +424,7 @@ router.get('/:id',
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/InvoiceTemplate'
+ *                   $ref: '#/components/schemas/Template'
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  *       401:
@@ -353,7 +520,7 @@ router.post('/',
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/InvoiceTemplate'
+ *                   $ref: '#/components/schemas/Template'
  *       404:
  *         description: Template not found
  *       400:
@@ -481,7 +648,7 @@ router.delete('/:id',
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   $ref: '#/components/schemas/InvoiceTemplate'
+ *                   $ref: '#/components/schemas/Template'
  *       404:
  *         description: Template not found
  *       400:
@@ -616,7 +783,7 @@ router.get('/:id/preview',
  *                       type: integer
  *                       example: 247
  *                     mostUsed:
- *                       $ref: '#/components/schemas/InvoiceTemplate'
+ *                       $ref: '#/components/schemas/Template'
  *                       nullable: true
  *       401:
  *         $ref: '#/components/responses/Unauthorized'

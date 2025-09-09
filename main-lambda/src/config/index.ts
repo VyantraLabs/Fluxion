@@ -52,8 +52,15 @@ export interface Config {
   };
   aws: {
     region: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
     sqs: {
       notificationQueueUrl: string;
+    };
+    s3: {
+      bucketName: string;
+      bucketUrl: string;
+      region: string;
     };
   };
   jwt: {
@@ -170,12 +177,25 @@ function createConfig(): Config {
       },
       
       aws: {
-        region: getOptionalEnv('AWS_REGION', 'us-east-1'),
+        region: getOptionalEnv('AWS_REGION', 'ap-south-1'),
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || undefined,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || undefined,
         sqs: {
           notificationQueueUrl: getRequiredEnv(
             'NOTIFICATION_QUEUE_URL',
-            isDevelopment ? 'https://sqs.us-east-1.amazonaws.com/123456789012/fluxion-notifications-dev' : undefined
+            isDevelopment ? 'https://sqs.ap-south-1.amazonaws.com/123456789012/fluxion-notifications-dev' : undefined
           ),
+        },
+        s3: {
+          bucketName: getRequiredEnv(
+            'S3_BUCKET_NAME',
+            isDevelopment ? 'fluxion-templates-dev' : undefined
+          ),
+          bucketUrl: getRequiredEnv(
+            'S3_BUCKET_URL',
+            isDevelopment ? 'https://fluxion-templates-dev.s3.ap-south-1.amazonaws.com' : undefined
+          ),
+          region: getOptionalEnv('S3_REGION', 'ap-south-1'),
         },
       },
       
@@ -214,6 +234,8 @@ function createConfig(): Config {
       console.error('- JWT_SECRET');
       console.error('- DB_PASSWORD');
       console.error('- NOTIFICATION_QUEUE_URL');
+      console.error('- S3_BUCKET_NAME');
+      console.error('- S3_BUCKET_URL');
       console.error('\nOptional environment variables:');
       console.error('- NODE_ENV (development|staging|production)');
       console.error('- PORT (default: 3000)');
@@ -225,7 +247,10 @@ function createConfig(): Config {
       console.error('- REDIS_HOST (default: localhost for dev, redis for prod)');
       console.error('- REDIS_PORT (default: 6379)');
       console.error('- REDIS_PASSWORD');
-      console.error('- AWS_REGION (default: us-east-1)');
+      console.error('- AWS_REGION (default: ap-south-1)');
+      console.error('- AWS_ACCESS_KEY_ID');
+      console.error('- AWS_SECRET_ACCESS_KEY');
+      console.error('- S3_REGION (default: ap-south-1)');
       console.error('- DEFAULT_BLOCKCHAIN_NETWORK (default: polygon)');
       console.error('- FRONTEND_URL');
       console.error('- LOG_LEVEL (debug|info|warn|error)');
@@ -253,6 +278,19 @@ function validateConfiguration(config: Config): void {
   // Validate SQS Queue URL
   if (!isValidSqsUrl(config.aws.sqs.notificationQueueUrl)) {
     throw new ConfigValidationError(`NOTIFICATION_QUEUE_URL must be a valid SQS queue URL, got: ${config.aws.sqs.notificationQueueUrl}`);
+  }
+  
+  // Validate S3 configuration
+  if (!config.aws.s3.bucketName) {
+    throw new ConfigValidationError('S3_BUCKET_NAME is required');
+  }
+  
+  if (!isValidUrl(config.aws.s3.bucketUrl)) {
+    throw new ConfigValidationError(`S3_BUCKET_URL must be a valid URL, got: ${config.aws.s3.bucketUrl}`);
+  }
+  
+  if (!config.aws.s3.bucketUrl.includes('s3')) {
+    throw new ConfigValidationError(`S3_BUCKET_URL must be a valid S3 URL, got: ${config.aws.s3.bucketUrl}`);
   }
   
   // Validate database configuration

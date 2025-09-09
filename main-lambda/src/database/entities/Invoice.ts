@@ -18,10 +18,11 @@ import { User } from './User';
 import { BlockchainNetwork } from './BlockchainNetwork';
 import { Token } from './Token';
 import { Payment } from './Payment';
-import { InvoiceTemplate } from './InvoiceTemplate';
+import { Template } from './Template';
 import { InvoiceAccessToken } from './InvoiceAccessToken';
 import { NotificationQueue } from './NotificationQueue';
 import { PaymentVerificationJob } from './PaymentVerificationJob';
+import { ReminderJob } from './ReminderJob';
 
 export type InvoiceStatus = 'draft' | 'created' | 'initiated' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'partial';
 
@@ -195,9 +196,9 @@ export class Invoice {
   payments!: Payment[];
 
   // New relations
-  @ManyToOne(() => InvoiceTemplate, template => template.invoices, { nullable: true })
+  @ManyToOne(() => Template, template => template.invoices, { nullable: true })
   @JoinColumn({ name: 'template_id' })
-  template?: InvoiceTemplate;
+  template?: Template;
 
   @OneToMany(() => InvoiceAccessToken, token => token.invoice, { cascade: true })
   accessTokens!: InvoiceAccessToken[];
@@ -207,6 +208,9 @@ export class Invoice {
 
   @OneToMany(() => PaymentVerificationJob, job => job.invoice, { cascade: true })
   verificationJobs!: PaymentVerificationJob[];
+
+  @OneToMany(() => ReminderJob, reminder => reminder.invoice, { cascade: true })
+  reminderJobs!: ReminderJob[];
 
   // Computed properties
   get displayAmount(): string {
@@ -306,6 +310,33 @@ export class Invoice {
     return this.clientSettings?.remindersSent || 0;
   }
 
+  get activeReminders(): ReminderJob[] {
+    return this.reminderJobs?.filter(reminder => 
+      ['scheduled', 'pending'].includes(reminder.status)
+    ) || [];
+  }
+
+  get sentReminders(): ReminderJob[] {
+    return this.reminderJobs?.filter(reminder => 
+      reminder.status === 'sent'
+    ) || [];
+  }
+
+  get hasActiveReminders(): boolean {
+    return this.activeReminders.length > 0;
+  }
+
+  get nextReminderDate(): Date | null {
+    const activeReminders = this.activeReminders;
+    if (activeReminders.length === 0) return null;
+    
+    const sortedReminders = activeReminders.sort((a, b) => 
+      a.scheduledFor.getTime() - b.scheduledFor.getTime()
+    );
+    
+    return sortedReminders[0].scheduledFor;
+  }
+
   // Methods
   toJSON() {
     const { deletedAt, ...rest } = this;
@@ -336,6 +367,11 @@ export class Invoice {
       activeAccessTokensCount: this.activeAccessTokens.length,
       verificationJobsCount: this.verificationJobs?.length || 0,
       pendingVerificationJobsCount: this.pendingVerificationJobs.length,
+      // Reminder properties
+      hasActiveReminders: this.hasActiveReminders,
+      nextReminderDate: this.nextReminderDate,
+      activeRemindersCount: this.activeReminders.length,
+      sentRemindersCount: this.sentReminders.length,
     };
   }
 
@@ -420,51 +456,51 @@ export class Invoice {
     };
   }
 
-  applyTemplateData(template: InvoiceTemplate): void {
+  applyTemplateData(template: Template): void {
     this.templateId = template.id;
     
+    const config = template.getConfiguration();
+    const defaults = template.content?.defaults || {};
+    
     // Apply template defaults
-    if (template.defaultTitle && !this.title) {
-      this.title = template.defaultTitle;
+    if (defaults.title && !this.title) {
+      this.title = defaults.title;
     }
-    if (template.defaultDescription && !this.description) {
-      this.description = template.defaultDescription;
+    if (defaults.description && !this.description) {
+      this.description = defaults.description;
     }
-    if (template.defaultChainId && !this.chainId) {
-      this.chainId = template.defaultChainId;
+    if (defaults.chainId && !this.chainId) {
+      this.chainId = defaults.chainId;
     }
-    if (template.defaultTokenId && !this.tokenId) {
-      this.tokenId = template.defaultTokenId;
+    if (defaults.tokenId && !this.tokenId) {
+      this.tokenId = defaults.tokenId;
     }
 
     // Apply template configuration
     this.metadata = {
       ...this.metadata,
-      templateData: template.configuration.customFields || {},
-      branding: template.configuration.branding,
-      paymentInstructions: template.configuration.paymentInstructions,
-      terms: template.configuration.terms,
+      templateData: config.customFields || {},
+      branding: config.branding,
+      paymentInstructions: config.paymentInstructions,
+      terms: config.terms,
     };
 
     this.clientSettings = {
       ...this.clientSettings,
-      allowPartialPayments: template.configuration.allowPartialPayments ?? true,
-      requireClientEmail: template.configuration.requireClientEmail ?? false,
-      notificationsEnabled: template.configuration.autoReminders ?? true,
+      allowPartialPayments: config.allowPartialPayments ?? true,
+      requireClientEmail: config.requireClientEmail ?? false,
+      notificationsEnabled: config.autoReminders ?? true,
     };
 
-    if (template.configuration.autoReminders && template.configuration.reminderIntervals) {
+    if (config.autoReminders && config.reminderIntervals) {
       this.metadata = {
         ...this.metadata,
         notificationPreferences: {
           sendReminders: true,
-          reminderIntervals: template.configuration.reminderIntervals,
+          reminderIntervals: config.reminderIntervals,
         },
       };
     }
-
-    // Increment template usage
-    template.incrementUsage();
   }
 
   // Static methods

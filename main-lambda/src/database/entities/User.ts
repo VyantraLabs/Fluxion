@@ -17,7 +17,7 @@ import { Organization } from './Organization';
 import { Invoice } from './Invoice';
 import { PayrollBatch } from './PayrollBatch';
 import { AuditLog } from './AuditLog';
-import { InvoiceTemplate } from './InvoiceTemplate';
+import { Template } from './Template';
 import { NotificationSettings } from './NotificationSettings';
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
@@ -89,8 +89,8 @@ export class User {
   @OneToMany(() => AuditLog, auditLog => auditLog.user)
   auditLogs!: AuditLog[];
 
-  @OneToMany(() => InvoiceTemplate, template => template.createdByUser)
-  invoiceTemplates!: InvoiceTemplate[];
+  @OneToMany(() => Template, template => template.organization)
+  templates!: Template[];
 
   @OneToMany(() => NotificationSettings, settings => settings.user, { cascade: true })
   notificationSettings!: NotificationSettings[];

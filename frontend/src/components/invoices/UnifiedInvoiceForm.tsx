@@ -18,10 +18,12 @@ import {
   CheckCircle,
   Loader2,
   X,
+  Plus,
 } from 'lucide-react';
 import { NetworkTokenSelector } from './NetworkTokenSelector';
 import { InvoicePreview } from './InvoicePreview';
-import { invoiceApi, handleApiResponse, handleApiError } from '@/utils/api';
+import { TemplateGallery } from '../templates/TemplateGallery';
+import { invoiceApi, templateApi, handleApiResponse, handleApiError } from '@/utils/api';
 import { formatInput } from '@/utils/format';
 import { CreateInvoiceRequest, InvoiceFormData } from '@/types/invoice';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +38,12 @@ interface FormStep {
 }
 
 const FORM_STEPS: FormStep[] = [
+  {
+    id: 'template',
+    title: 'Choose Template',
+    description: 'Select or skip template',
+    icon: <FileText className="w-5 h-5" />,
+  },
   {
     id: 'basic',
     title: 'Basic Information',
@@ -128,6 +136,10 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  
+  // Template selection state
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
   
   const [formData, setFormData] = useState<InvoiceFormData>({
     title: initialData?.title || '',
@@ -309,6 +321,33 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
   const handlePrevious = useCallback(() => {
     setCurrentStep(prev => Math.max(prev - 1, 0));
   }, []);
+  
+  // Template selection handlers
+  const handleTemplateSelect = useCallback((template: any) => {
+    setSelectedTemplate(template);
+    
+    // Apply template data to form if available
+    if (template.previewData) {
+      setFormData(prev => ({
+        ...prev,
+        title: template.previewData.title || prev.title,
+        description: template.previewData.description || prev.description,
+      }));
+    }
+    
+    // Increment template usage
+    templateApi.incrementUsage(template.id).catch(console.error);
+    
+    toast.success(`Template "${template.name}" applied`);
+    
+    // Move to next step
+    handleNext();
+  }, [handleNext]);
+  
+  const handleSkipTemplate = useCallback(() => {
+    setSelectedTemplate(null);
+    handleNext();
+  }, [handleNext]);
 
   const buildInvoiceData = useCallback((): any => {
     return {
@@ -650,10 +689,70 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
     </div>
   );
 
+  const renderTemplateSelection = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h3 className="text-lg font-medium text-secondary-900 mb-2">
+          Choose a Template
+        </h3>
+        <p className="text-secondary-600 mb-6">
+          Start with a professional template or create from scratch
+        </p>
+      </div>
+      
+      {selectedTemplate && (
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center space-x-3">
+            <FileText className="w-5 h-5 text-primary-600" />
+            <div>
+              <h4 className="font-medium text-primary-900">{selectedTemplate.name}</h4>
+              <p className="text-sm text-primary-700">{selectedTemplate.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <button
+          onClick={() => setShowTemplateGallery(true)}
+          className="p-6 border-2 border-dashed border-secondary-300 rounded-lg hover:border-primary-300 hover:bg-primary-50 transition-colors text-center"
+        >
+          <FileText className="w-8 h-8 text-secondary-400 mx-auto mb-3" />
+          <h4 className="font-medium text-secondary-900 mb-1">Browse Templates</h4>
+          <p className="text-sm text-secondary-600">Choose from professional templates</p>
+        </button>
+        
+        <button
+          onClick={handleSkipTemplate}
+          className="p-6 border-2 border-dashed border-secondary-300 rounded-lg hover:border-secondary-400 hover:bg-secondary-50 transition-colors text-center"
+        >
+          <Plus className="w-8 h-8 text-secondary-400 mx-auto mb-3" />
+          <h4 className="font-medium text-secondary-900 mb-1">Start from Scratch</h4>
+          <p className="text-sm text-secondary-600">Create a custom invoice</p>
+        </button>
+      </div>
+      
+      {showTemplateGallery && (
+        <div className="border border-secondary-200 rounded-lg p-6">
+          <TemplateGallery
+            onTemplateSelect={handleTemplateSelect}
+            allowSelection={true}
+            showCreateButton={false}
+            layout="gallery"
+          />
+        </div>
+      )}
+    </div>
+  );
+
   const renderStepContent = () => {
     if (layout === 'single-page') {
       return (
         <div className="space-y-8">
+          <div>
+            <h3 className="text-lg font-medium text-secondary-900 mb-4">Template Selection</h3>
+            {renderTemplateSelection()}
+          </div>
           <div>
             <h3 className="text-lg font-medium text-secondary-900 mb-4">Basic Information</h3>
             {renderBasicInformation()}
@@ -672,12 +771,14 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
 
     switch (currentStep) {
       case 0:
-        return renderBasicInformation();
+        return renderTemplateSelection();
       case 1:
-        return renderClientDetails();
+        return renderBasicInformation();
       case 2:
-        return renderPaymentSettings();
+        return renderClientDetails();
       case 3:
+        return renderPaymentSettings();
+      case 4:
         return renderReviewPreview();
       default:
         return null;

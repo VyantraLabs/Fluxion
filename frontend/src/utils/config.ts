@@ -230,6 +230,30 @@ export const apiEndpoints = {
     health: '/config/health',
     validateNetwork: (chainId: number) => `/config/validate/network/${chainId}`,
   },
+
+  // Templates
+  templates: {
+    base: '/templates',
+    byId: (id: string) => `/templates/${id}`,
+    categories: '/templates/categories',
+    analytics: (id: string) => `/templates/${id}/analytics`,
+    incrementUsage: (id: string) => `/templates/${id}/use`,
+  },
+
+  // Reminders
+  reminders: {
+    base: '/reminders',
+    byId: (id: string) => `/reminders/${id}`,
+    execute: (id: string) => `/reminders/${id}/execute`,
+    pause: (id: string) => `/reminders/${id}/pause`,
+    resume: (id: string) => `/reminders/${id}/resume`,
+    analytics: (id: string) => `/reminders/${id}/analytics`,
+    stats: '/reminders/stats',
+    templates: '/reminders/templates',
+    byInvoice: (invoiceId: string) => `/reminders/invoice/${invoiceId}`,
+    setupForInvoice: (invoiceId: string) => `/reminders/invoice/${invoiceId}/setup`,
+    bulkCreate: '/reminders/bulk/create',
+  },
 } as const;
 
 // Validation

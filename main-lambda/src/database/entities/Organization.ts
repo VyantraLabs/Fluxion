@@ -16,9 +16,10 @@ import { Payment } from './Payment';
 import { PayrollBatch } from './PayrollBatch';
 import { OrganizationSetting } from './OrganizationSetting';
 import { AuditLog } from './AuditLog';
-import { InvoiceTemplate } from './InvoiceTemplate';
+import { Template } from './Template';
 import { NotificationQueue } from './NotificationQueue';
 import { NotificationSettings } from './NotificationSettings';
+import { ReminderJob } from './ReminderJob';
 
 export type OrganizationPlan = 'basic' | 'professional' | 'enterprise';
 
@@ -73,14 +74,17 @@ export class Organization {
   @OneToMany(() => AuditLog, auditLog => auditLog.organization, { cascade: true })
   auditLogs!: AuditLog[];
 
-  @OneToMany(() => InvoiceTemplate, template => template.organization, { cascade: true })
-  invoiceTemplates!: InvoiceTemplate[];
+  @OneToMany(() => Template, template => template.organization, { cascade: true })
+  templates!: Template[];
 
   @OneToMany(() => NotificationQueue, notification => notification.organization, { cascade: true })
   notifications!: NotificationQueue[];
 
   @OneToMany(() => NotificationSettings, settings => settings.organization, { cascade: true })
   notificationSettings!: NotificationSettings[];
+
+  @OneToMany(() => ReminderJob, reminder => reminder.organization, { cascade: true })
+  reminderJobs!: ReminderJob[];
 
   // Computed properties
   get isActive(): boolean {

@@ -15,11 +15,13 @@ import { PayrollRecipient } from './entities/PayrollRecipient';
 import { OrganizationSetting } from './entities/OrganizationSetting';
 import { AuditLog } from './entities/AuditLog';
 // Production feature entities
-import { InvoiceTemplate } from './entities/InvoiceTemplate';
+import { Template } from './entities/Template';
+import { TemplateCategory } from './entities/TemplateCategory';
 import { InvoiceAccessToken } from './entities/InvoiceAccessToken';
 import { NotificationQueue } from './entities/NotificationQueue';
 import { NotificationSettings } from './entities/NotificationSettings';
 import { PaymentVerificationJob } from './entities/PaymentVerificationJob';
+import { ReminderJob } from './entities/ReminderJob';
 
 const logger = new Logger('DataSource');
 
@@ -58,11 +60,13 @@ export const AppDataSource = new DataSource({
     OrganizationSetting,
     AuditLog,
     // Production feature entities
-    InvoiceTemplate,
+    Template,
+    TemplateCategory,
     InvoiceAccessToken,
     NotificationQueue,
     NotificationSettings,
     PaymentVerificationJob,
+    ReminderJob,
   ],
   
   // Migration configuration
@@ -178,6 +182,7 @@ class DatabaseConnectionManager {
         'invoice_templates',
         'notification_queue',
         'notification_settings',
+        'reminder_jobs',
       ];
 
       for (const tableName of multiTenantTables) {

@@ -1119,7 +1119,7 @@ const swaggerDefinition = {
       },
 
       // Template schemas
-      InvoiceTemplate: {
+      Template: {
         type: 'object',
         required: ['id', 'organization_id', 'name', 'template_data', 'is_default', 'created_at', 'updated_at'],
         properties: {

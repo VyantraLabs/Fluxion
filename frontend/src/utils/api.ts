@@ -272,6 +272,15 @@ export const invoiceApi = {
     apiRequest.post(apiEndpoints.invoices.base, { ...data, status: 'draft' }),
   createWithStatus: (data: any, status: 'draft' | 'created' | 'initiated' | 'sent') =>
     apiRequest.post(apiEndpoints.invoices.base, { ...data, status }),
+  
+  // Template integration - for now, this just creates a regular invoice
+  // TODO: Implement proper template-to-invoice conversion in backend
+  createFromTemplate: (templateId: string, data: any) => {
+    // For now, just create a regular invoice with the provided data
+    // The template data should have been applied in the frontend
+    console.log(`Creating invoice from template ${templateId}`, data);
+    return apiRequest.post(apiEndpoints.invoices.base, data);
+  },
 
   getById: (id: string) =>
     apiRequest.get(apiEndpoints.invoices.byId(id)),
@@ -322,43 +331,95 @@ export const analyticsApi = {
 export const templateApi = {
   // Template CRUD
   create: (data: any) =>
-    apiRequest.post('/api/templates', data),
+    apiRequest.post(apiEndpoints.templates.base, data),
 
   getById: (id: string) =>
-    apiRequest.get(`/api/templates/${id}`),
+    apiRequest.get(apiEndpoints.templates.byId(id)),
 
   update: (id: string, data: any) =>
-    apiRequest.put(`/api/templates/${id}`, data),
+    apiRequest.put(apiEndpoints.templates.byId(id), data),
 
   delete: (id: string) =>
-    apiRequest.delete(`/api/templates/${id}`),
+    apiRequest.delete(apiEndpoints.templates.byId(id)),
 
-  // Template listing
+  // Template listing (unified endpoint supports both authenticated and unauthenticated access)
   getAll: (params?: {
     category?: string;
-    isPublic?: boolean;
     search?: string;
+    name?: string;
+    isActive?: boolean;
     limit?: number;
     offset?: number;
-  }) => apiRequest.get('/api/templates', params),
+    nextToken?: string;
+  }) => apiRequest.get(apiEndpoints.templates.base, params),
 
-  getPublic: (params?: {
-    category?: string;
-    search?: string;
-    limit?: number;
-    offset?: number;
-  }) => apiRequest.get('/api/templates/public', params),
-
+  // Categories (unified endpoint supports both authenticated and unauthenticated access)
   getCategories: () =>
-    apiRequest.get('/api/templates/categories'),
+    apiRequest.get(apiEndpoints.templates.categories),
 
   // Template analytics
   getAnalytics: (id: string) =>
-    apiRequest.get(`/api/templates/${id}/analytics`),
+    apiRequest.get(apiEndpoints.templates.analytics(id)),
 
   // Template usage
   incrementUsage: (id: string) =>
-    apiRequest.post(`/api/templates/${id}/use`),
+    apiRequest.post(apiEndpoints.templates.incrementUsage(id)),
+};
+
+// Reminder API
+export const reminderApi = {
+  // Reminder CRUD
+  create: (data: any) =>
+    apiRequest.post(apiEndpoints.reminders.base, data),
+
+  getById: (id: string) =>
+    apiRequest.get(apiEndpoints.reminders.byId(id)),
+
+  update: (id: string, data: any) =>
+    apiRequest.put(apiEndpoints.reminders.byId(id), data),
+
+  delete: (id: string) =>
+    apiRequest.delete(apiEndpoints.reminders.byId(id)),
+
+  // Reminder listing
+  getAll: (params?: {
+    type?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }) => apiRequest.get(apiEndpoints.reminders.base, params),
+
+  // Reminder execution
+  execute: (id: string) =>
+    apiRequest.post(apiEndpoints.reminders.execute(id)),
+
+  pause: (id: string) =>
+    apiRequest.post(apiEndpoints.reminders.pause(id)),
+
+  resume: (id: string) =>
+    apiRequest.post(apiEndpoints.reminders.resume(id)),
+
+  // Reminder analytics
+  getAnalytics: (id: string) =>
+    apiRequest.get(apiEndpoints.reminders.analytics(id)),
+
+  getStats: () =>
+    apiRequest.get(apiEndpoints.reminders.stats),
+
+  // Reminder templates
+  getTemplates: () =>
+    apiRequest.get(apiEndpoints.reminders.templates),
+
+  // Invoice-specific reminders
+  getByInvoiceId: (invoiceId: string) =>
+    apiRequest.get(apiEndpoints.reminders.byInvoice(invoiceId)),
+
+  setupForInvoice: (invoiceId: string, data: any) =>
+    apiRequest.post(apiEndpoints.reminders.setupForInvoice(invoiceId), data),
+
+  // Bulk operations
+  bulkCreate: (data: any) =>
+    apiRequest.post(apiEndpoints.reminders.bulkCreate, data),
 };
 
 // Session storage utilities for configuration caching

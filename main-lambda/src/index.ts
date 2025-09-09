@@ -25,6 +25,7 @@ import { publicRoutes } from '@/modules/public/handlers';
 import { adminRoutes } from '@/modules/admin/handlers';
 import { notificationRoutes } from '@/modules/notifications/handlers';
 import { jobRoutes } from '@/modules/jobs/handlers';
+import { reminderRoutes } from '@/modules/reminders/handlers';
 
 const logger = new Logger('MainLambda');
 
@@ -149,6 +150,7 @@ app.use('/public', publicRoutes);
 app.use('/admin', adminRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/jobs', jobRoutes);
+app.use('/reminders', reminderRoutes);
 
 // API info endpoint
 app.get('/', (req, res) => {
@@ -216,6 +218,23 @@ app.get('/', (req, res) => {
           '/config/tokens/{chainId}',
           '/config/app-config',
           '/config/summary'
+        ]
+      },
+      reminders: {
+        base: '/reminders',
+        description: 'Invoice reminder scheduling and management',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        routes: [
+          'GET /reminders - List reminders',
+          'POST /reminders - Create reminder',
+          'GET /reminders/{id} - Get reminder details',
+          'PUT /reminders/{id} - Update reminder',
+          'DELETE /reminders/{id} - Cancel reminder',
+          'POST /reminders/{id}/execute - Manually execute reminder',
+          'GET /reminders/invoice/{invoiceId} - Get invoice reminders',
+          'POST /reminders/invoice/{invoiceId}/setup - Setup default reminders',
+          'POST /reminders/bulk/create - Create bulk reminders',
+          'GET /reminders/stats - Get reminder statistics'
         ]
       }
     },

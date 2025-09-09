@@ -13,6 +13,8 @@ import {
   Plus,
   Zap,
   Home,
+  Bell,
+  Layout,
 } from 'lucide-react';
 import { WalletConnectButton } from '@/components/web3/WalletConnectButton';
 import { useWalletAuth } from '@/contexts/AuthContext';
@@ -28,6 +30,8 @@ interface NavigationItem {
 const navigation: NavigationItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
+  { name: 'Templates', href: '/dashboard/templates', icon: Layout },
+  { name: 'Reminders', href: '/dashboard/reminders', icon: Bell },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCard },
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },

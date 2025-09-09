@@ -14,98 +14,157 @@ const idSchema = z.string()
     'Invalid ID format - must be either UUID or ULID'
   );
 
-// Template creation schema
-export const CreateTemplateSchema = z.object({
-  name: z.string()
-    .min(1, 'Name is required')
-    .max(255, 'Name too long')
-    .trim(),
-  description: z.string()
-    .max(500, 'Description too long')
-    .trim()
-    .optional(),
-  defaultTitle: z.string()
-    .max(255, 'Default title too long')
-    .trim()
-    .optional(),
-  defaultDescription: z.string()
-    .max(500, 'Default description too long')
-    .trim()
-    .optional(),
-  defaultDueDays: z.number()
-    .min(1, 'Due days must be at least 1')
-    .max(365, 'Due days cannot exceed 365')
-    .optional(),
-  defaultNetworkId: idSchema.optional(),
-  defaultTokenId: idSchema.optional(),
-  configuration: z.object({
-    autoSend: z.boolean().optional(),
-    reminderDays: z.array(z.number().min(1).max(365)).optional(),
-    customFields: z.array(z.object({
-      name: z.string().min(1).max(100),
-      required: z.boolean().optional().default(false),
-      type: z.enum(['text', 'number', 'date', 'email']).optional().default('text')
-    })).optional(),
-    emailTemplate: z.object({
-      subject: z.string().max(200).optional(),
-      body: z.string().max(2000).optional()
-    }).optional()
-  }).optional()
-});
-
-// Template update schema
-export const UpdateTemplateSchema = z.object({
-  name: z.string()
-    .min(1, 'Name is required')
-    .max(255, 'Name too long')
-    .trim()
-    .optional(),
-  description: z.string()
-    .max(500, 'Description too long')
-    .trim()
-    .optional(),
-  defaultTitle: z.string()
-    .max(255, 'Default title too long')
-    .trim()
-    .optional(),
-  defaultDescription: z.string()
-    .max(500, 'Default description too long')
-    .trim()
-    .optional(),
-  defaultDueDays: z.number()
-    .min(1, 'Due days must be at least 1')
-    .max(365, 'Due days cannot exceed 365')
-    .optional(),
-  defaultNetworkId: idSchema.optional(),
-  defaultTokenId: idSchema.optional(),
-  configuration: z.object({
-    autoSend: z.boolean().optional(),
-    reminderDays: z.array(z.number().min(1).max(365)).optional(),
-    customFields: z.array(z.object({
-      name: z.string().min(1).max(100),
-      required: z.boolean().optional().default(false),
-      type: z.enum(['text', 'number', 'date', 'email']).optional().default('text')
-    })).optional(),
-    emailTemplate: z.object({
-      subject: z.string().max(200).optional(),
-      body: z.string().max(2000).optional()
-    }).optional()
+// Template Variable Schema
+const TemplateVariableSchema = z.object({
+  name: z.string().min(1).max(100),
+  type: z.enum(['text', 'number', 'date', 'select', 'boolean', 'email', 'url']),
+  label: z.string().min(1).max(200),
+  required: z.boolean().default(false),
+  options: z.array(z.string()).optional(),
+  defaultValue: z.any().optional(),
+  placeholder: z.string().optional(),
+  validation: z.object({
+    minLength: z.number().min(0).optional(),
+    maxLength: z.number().min(0).optional(),
+    pattern: z.string().optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
   }).optional(),
-  isActive: z.boolean().optional()
 });
 
-// Template filter schema for searching/listing
+// Template Schema
+const TemplateSchemaSchema = z.object({
+  requiredFields: z.array(z.string()).default([]),
+  optionalFields: z.array(z.string()).default([]),
+  customFields: z.array(TemplateVariableSchema).optional(),
+});
+
+// Branding Configuration Schema
+const BrandingConfigSchema = z.object({
+  logo: z.string().url().optional(),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  companyName: z.string().max(255).optional(),
+  companyAddress: z.string().max(500).optional(),
+  companyPhone: z.string().max(50).optional(),
+  companyEmail: z.string().email().optional(),
+  website: z.string().url().optional(),
+  footerText: z.string().max(1000).optional(),
+});
+
+// Category-specific configurations
+const InvoiceConfigSchema = z.object({
+  autoReminders: z.boolean().optional(),
+  reminderIntervals: z.array(z.number().min(1).max(365)).optional(),
+  requireClientEmail: z.boolean().optional(),
+  allowPartialPayments: z.boolean().optional(),
+  showPaymentProgress: z.boolean().optional(),
+  paymentInstructions: z.string().max(1000).optional(),
+  terms: z.string().max(2000).optional(),
+});
+
+const PayrollConfigSchema = z.object({
+  payPeriod: z.enum(['weekly', 'bi-weekly', 'monthly', 'quarterly']).optional(),
+  includeDeductions: z.boolean().optional(),
+  showGrossPay: z.boolean().optional(),
+  showNetPay: z.boolean().optional(),
+  taxCalculation: z.boolean().optional(),
+});
+
+const ContractConfigSchema = z.object({
+  requireSignature: z.boolean().optional(),
+  signatureFields: z.array(z.string()).optional(),
+  autoExpiry: z.boolean().optional(),
+  expiryDays: z.number().min(1).max(1095).optional(),
+  notificationDays: z.array(z.number().min(1).max(365)).optional(),
+});
+
+// Template Configuration Schema
+const TemplateConfigurationSchema = z.object({
+  branding: BrandingConfigSchema.optional(),
+  invoice: InvoiceConfigSchema.optional(),
+  payroll: PayrollConfigSchema.optional(),
+  contract: ContractConfigSchema.optional(),
+  customCss: z.string().optional(),
+  headerTemplate: z.string().optional(),
+  footerTemplate: z.string().optional(),
+  pageFormat: z.enum(['A4', 'Letter', 'Legal']).optional(),
+  orientation: z.enum(['portrait', 'landscape']).optional(),
+});
+
+// Create Template Schema
+export const CreateTemplateSchema = z.object({
+  name: z.string().min(1, 'Template name is required').max(255, 'Template name too long'),
+  description: z.string().max(1000, 'Description too long').optional(),
+  categoryId: idSchema,
+  content: z.record(z.any(), 'Template content must be a valid object'),
+  isSystemTemplate: z.boolean().default(false).optional(), // For admin use only
+});
+
+// Update Template Schema
+export const UpdateTemplateSchema = z.object({
+  name: z.string().min(1, 'Template name is required').max(255, 'Template name too long').optional(),
+  description: z.string().max(1000, 'Description too long').optional(),
+  categoryId: idSchema.optional(),
+  content: z.record(z.any(), 'Template content must be a valid object').optional(),
+  isActive: z.boolean().optional(),
+});
+
+// Template Upload Schema
+export const TemplateUploadSchema = z.object({
+  templateId: idSchema,
+  file: z.any(), // Buffer or Readable stream
+  fileName: z.string().min(1).max(255),
+  contentType: z.string().min(1),
+  fileSize: z.number().min(1).max(10 * 1024 * 1024), // 10MB max
+});
+
+// Template Preview Schema
+export const TemplatePreviewSchema = z.object({
+  previewType: z.enum(['sample', 'real']),
+  data: z.record(z.any()).optional(),
+  format: z.enum(['html', 'pdf', 'json']).default('html'),
+});
+
+// Template Search Schema
+export const TemplateSearchSchema = z.object({
+  categoryId: idSchema.optional(),
+  name: z.string().max(255).optional(),
+  isSystemTemplate: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+// Template Filter Schema (for backward compatibility with existing endpoints)
 export const TemplateFilterSchema = z.object({
   limit: z.string()
     .regex(/^\d+$/, 'Limit must be a number')
     .transform(Number)
-    .pipe(z.number().min(1).max(CONSTANTS.MAX_PAGE_SIZE))
+    .pipe(z.number().min(1).max(CONSTANTS?.MAX_PAGE_SIZE || 100))
     .optional()
-    .default(CONSTANTS.DEFAULT_PAGE_SIZE.toString()),
+    .default((CONSTANTS?.DEFAULT_PAGE_SIZE || 20).toString()),
   nextToken: z.string().optional(),
+  page: z.number().min(1).optional(),
   name: z.string()
     .max(255, 'Name filter too long')
     .trim()
+    .optional(),
+  search: z.string()
+    .max(255, 'Search term too long')
+    .trim()
+    .optional(),
+  categoryId: idSchema.optional(),
+  categoryIds: z.string()
+    .transform((val) => val.split(',').map(id => id.trim()).filter(Boolean))
+    .optional(),
+  categories: z.string()
+    .transform((val) => val.split(',').map(id => id.trim()).filter(Boolean))
+    .optional(),
+  isSystemTemplate: z.string()
+    .transform((val) => {
+      if (val === 'true') return true;
+      if (val === 'false') return false;
+      return undefined;
+    })
     .optional(),
   isActive: z.string()
     .transform((val) => {
@@ -114,23 +173,10 @@ export const TemplateFilterSchema = z.object({
       return undefined;
     })
     .optional(),
-  createdBy: z.string()
-    .min(1, 'Creator filter cannot be empty')
+  createdBy: idSchema.optional(),
+  tags: z.string()
+    .transform((val) => val.split(',').map(tag => tag.trim()).filter(Boolean))
     .optional(),
-  hasCustomFields: z.string()
-    .transform((val) => {
-      if (val === 'true') return true;
-      if (val === 'false') return false;
-      return undefined;
-    })
-    .optional(),
-  hasDefaultNetwork: z.string()
-    .transform((val) => {
-      if (val === 'true') return true;
-      if (val === 'false') return false;
-      return undefined;
-    })
-    .optional()
 });
 
 // Template ID parameter schema
@@ -146,50 +192,54 @@ export const DuplicateTemplateSchema = z.object({
     .trim()
 });
 
-// Create invoice from template schema
-export const CreateInvoiceFromTemplateSchema = z.object({
-  templateId: idSchema,
-  clientName: z.string()
-    .min(1, 'Client name is required')
-    .max(255, 'Client name too long')
-    .trim(),
-  clientEmail: z.string()
-    .email('Invalid email format')
-    .max(255, 'Email too long'),
-  clientWallet: z.string()
-    .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid wallet address format')
-    .optional(),
-  amount: z.number()
-    .min(CONSTANTS.MIN_INVOICE_AMOUNT, `Amount must be at least ${CONSTANTS.MIN_INVOICE_AMOUNT}`)
-    .max(CONSTANTS.MAX_INVOICE_AMOUNT, `Amount cannot exceed ${CONSTANTS.MAX_INVOICE_AMOUNT}`),
-  dueDate: z.string()
-    .datetime('Invalid due date format')
-    .optional(),
-  customData: z.record(z.any()).optional()
-});
+// Validation functions
+export const validateTemplateCreate = (data: any) => {
+  return CreateTemplateSchema.safeParse(data);
+};
 
-// Template statistics response schema
-export const TemplateStatsSchema = z.object({
-  total: z.number(),
-  active: z.number(),
-  inactive: z.number(),
-  totalUsage: z.number(),
-  mostUsed: z.object({
-    id: idSchema,
-    name: z.string(),
-    usageCount: z.number()
-  }).nullable().optional()
-});
+export const validateTemplateUpdate = (data: any) => {
+  return UpdateTemplateSchema.safeParse(data);
+};
 
-// Template preview request schema
-export const TemplatePreviewSchema = z.object({
-  customData: z.record(z.any()).optional()
-});
+export const validateTemplateUpload = (data: any) => {
+  return TemplateUploadSchema.safeParse(data);
+};
 
-// Export types
-export type CreateTemplateRequest = z.infer<typeof CreateTemplateSchema>;
-export type UpdateTemplateRequest = z.infer<typeof UpdateTemplateSchema>;
-export type TemplateFilterRequest = z.infer<typeof TemplateFilterSchema>;
+export const validateTemplatePreview = (data: any) => {
+  return TemplatePreviewSchema.safeParse(data);
+};
+
+export const validateTemplateSearch = (data: any) => {
+  return TemplateSearchSchema.safeParse(data);
+};
+
+export const validateTemplateFilter = (data: any) => {
+  return TemplateFilterSchema.safeParse(data);
+};
+
+export const validateTemplateId = (data: any) => {
+  return TemplateIdSchema.safeParse(data);
+};
+
+export const validateDuplicateTemplate = (data: any) => {
+  return DuplicateTemplateSchema.safeParse(data);
+};
+
+// Type exports
+export type CreateTemplateInput = z.infer<typeof CreateTemplateSchema>;
+export type UpdateTemplateInput = z.infer<typeof UpdateTemplateSchema>;
+export type TemplateUploadInput = z.infer<typeof TemplateUploadSchema>;
+export type TemplatePreviewInput = z.infer<typeof TemplatePreviewSchema>;
+export type TemplateSearchInput = z.infer<typeof TemplateSearchSchema>;
+export type TemplateFilterInput = z.infer<typeof TemplateFilterSchema>;
+export type TemplateVariable = z.infer<typeof TemplateVariableSchema>;
+export type TemplateSchemaType = z.infer<typeof TemplateSchemaSchema>;
+export type BrandingConfig = z.infer<typeof BrandingConfigSchema>;
+export type TemplateConfiguration = z.infer<typeof TemplateConfigurationSchema>;
+
+// Legacy exports for backward compatibility
+export type CreateTemplateRequest = CreateTemplateInput;
+export type UpdateTemplateRequest = UpdateTemplateInput;
+export type TemplateFilterRequest = TemplateFilterInput;
 export type DuplicateTemplateRequest = z.infer<typeof DuplicateTemplateSchema>;
-export type CreateInvoiceFromTemplateRequest = z.infer<typeof CreateInvoiceFromTemplateSchema>;
-export type TemplatePreviewRequest = z.infer<typeof TemplatePreviewSchema>;
+export type TemplatePreviewRequest = TemplatePreviewInput;

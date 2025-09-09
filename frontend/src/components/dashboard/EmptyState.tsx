@@ -9,7 +9,7 @@ import {
   Users,
   ArrowRight,
   Star,
-  Template,
+  Layout,
   Sparkles,
   Receipt,
 } from 'lucide-react';
@@ -117,7 +117,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
               primary: true,
             },
             {
-              icon: <Template className="w-6 h-6" />,
+              icon: <Layout className="w-6 h-6" />,
               title: 'Use Template',
               description: 'Choose from pre-built invoice templates',
               href: '/dashboard/templates',
@@ -206,7 +206,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
               primary: true,
             },
             {
-              icon: <Template className="w-6 h-6" />,
+              icon: <Layout className="w-6 h-6" />,
               title: 'Explore Templates',
               description: 'Browse professional invoice templates',
               href: '/dashboard/templates',

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Plus,
   FileText,
-  Template,
+  Layout,
   Send,
   Eye,
   Settings,
@@ -126,7 +126,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
 
   const secondaryActions = [
     {
-      icon: <Template className="w-5 h-5" />,
+      icon: <Layout className="w-5 h-5" />,
       title: 'Use Template',
       description: 'Create from saved template',
       href: '/dashboard/templates',

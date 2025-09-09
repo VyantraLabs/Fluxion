@@ -1,5 +1,8 @@
-import { InvoiceTemplateRepository, CreateInvoiceTemplateData, UpdateInvoiceTemplateData, TemplateSearchOptions } from '@/database/repositories/InvoiceTemplateRepository';
-import { InvoiceTemplate } from '@/database/entities/InvoiceTemplate';
+import { repositories } from '@/database/repositories';
+import { TemplateRepository, CreateTemplateData, UpdateTemplateData, TemplateSearchOptions } from '@/database/repositories/TemplateRepository';
+import { TemplateCategoryRepository } from '@/database/repositories/TemplateCategoryRepository';
+import { Template } from '@/database/entities/Template';
+import { TemplateCategory } from '@/database/entities/TemplateCategory';
 import { TenantContext, PaginatedResult, QueryOptions } from '@/types/common';
 import { FluxionError, ErrorCodes } from '@/types/common';
 import { Logger } from '@/shared/utils/logger';
@@ -7,49 +10,45 @@ import { Logger } from '@/shared/utils/logger';
 export interface CreateTemplateDto {
   name: string;
   description?: string;
-  defaultTitle?: string;
-  defaultDescription?: string;
-  defaultDueDays?: number;
-  defaultNetworkId?: string;
-  defaultTokenId?: string;
-  configuration?: any;
-  createdBy: string;
+  categoryId: string;
+  content: Record<string, any>;
+  isSystemTemplate?: boolean; // For admin use only
 }
 
 export interface UpdateTemplateDto {
   name?: string;
   description?: string;
-  defaultTitle?: string;
-  defaultDescription?: string;
-  defaultDueDays?: number;
-  defaultNetworkId?: string;
-  defaultTokenId?: string;
-  configuration?: any;
+  categoryId?: string;
+  content?: Record<string, any>;
   isActive?: boolean;
 }
 
 export interface TemplatePreview {
-  preview: {
-    title: string;
-    description: string;
-    amount: number;
-    dueDate: string;
-    clientName: string;
-    clientEmail: string;
-    networkId?: string;
-    tokenId?: string;
-  };
-  sampleData: {
-    [key: string]: any;
-  };
+  renderedContent: Record<string, any>;
+  sampleData: Record<string, any>;
+}
+
+export interface CategoryWithCount {
+  id: string;
+  name: string;
+  description?: string;
+  slug: string;
+  icon?: string;
+  color?: string;
+  sortOrder: number;
+  isSystem: boolean;
+  isActive: boolean;
+  count: number;
 }
 
 export class TemplateService {
-  private templateRepository: InvoiceTemplateRepository;
+  private templateRepository: TemplateRepository;
+  private templateCategoryRepository: TemplateCategoryRepository;
   private logger: Logger;
 
   constructor() {
-    this.templateRepository = new InvoiceTemplateRepository();
+    this.templateRepository = repositories.templates;
+    this.templateCategoryRepository = repositories.templateCategories;
     this.logger = new Logger('TemplateService');
   }
 
@@ -59,37 +58,44 @@ export class TemplateService {
   async createTemplate(
     tenantContext: TenantContext,
     templateData: CreateTemplateDto
-  ): Promise<InvoiceTemplate> {
-    this.logger.info('Creating invoice template', {
+  ): Promise<Template> {
+    this.logger.info('Creating template', {
       name: templateData.name,
       tenantId: tenantContext.tenantId,
-      createdBy: templateData.createdBy
+      categoryId: templateData.categoryId
     });
 
     try {
-      const createData: CreateInvoiceTemplateData = {
+      // Validate category exists
+      const category = await this.templateCategoryRepository.findById(tenantContext, templateData.categoryId);
+      if (!category) {
+        throw new FluxionError(
+          ErrorCodes.VALIDATION_ERROR,
+          'Template category not found',
+          404
+        );
+      }
+
+      const createData: CreateTemplateData = {
         name: templateData.name,
         description: templateData.description,
-        defaultTitle: templateData.defaultTitle,
-        defaultDescription: templateData.defaultDescription,
-        defaultDueDays: templateData.defaultDueDays,
-        defaultNetworkId: templateData.defaultNetworkId,
-        defaultTokenId: templateData.defaultTokenId,
-        configuration: templateData.configuration,
-        createdBy: templateData.createdBy
+        categoryId: templateData.categoryId,
+        content: templateData.content,
+        organizationId: templateData.isSystemTemplate ? undefined : tenantContext.tenantId,
       };
 
       const template = await this.templateRepository.create(tenantContext, createData);
 
-      this.logger.info('Invoice template created successfully', {
+      this.logger.info('Template created successfully', {
         templateId: template.id,
         name: template.name,
+        isSystem: template.isSystemTemplate,
         tenantId: tenantContext.tenantId
       });
 
       return template;
     } catch (error: any) {
-      this.logger.error('Failed to create invoice template', {
+      this.logger.error('Failed to create template', {
         error: error.message,
         templateData: { name: templateData.name },
         tenantId: tenantContext.tenantId
@@ -104,7 +110,7 @@ export class TemplateService {
   async getTemplateById(
     tenantContext: TenantContext,
     templateId: string
-  ): Promise<InvoiceTemplate> {
+  ): Promise<Template> {
     this.logger.info('Retrieving template by ID', {
       templateId,
       tenantId: tenantContext.tenantId
@@ -130,22 +136,30 @@ export class TemplateService {
     tenantContext: TenantContext,
     templateId: string,
     updateData: UpdateTemplateDto
-  ): Promise<InvoiceTemplate> {
+  ): Promise<Template> {
     this.logger.info('Updating template', {
       templateId,
       tenantId: tenantContext.tenantId
     });
 
     try {
-      const updateTemplateData: UpdateInvoiceTemplateData = {
+      // Validate category if provided
+      if (updateData.categoryId) {
+        const category = await this.templateCategoryRepository.findById(tenantContext, updateData.categoryId);
+        if (!category) {
+          throw new FluxionError(
+            ErrorCodes.VALIDATION_ERROR,
+            'Template category not found',
+            404
+          );
+        }
+      }
+
+      const updateTemplateData: UpdateTemplateData = {
         name: updateData.name,
         description: updateData.description,
-        defaultTitle: updateData.defaultTitle,
-        defaultDescription: updateData.defaultDescription,
-        defaultDueDays: updateData.defaultDueDays,
-        defaultNetworkId: updateData.defaultNetworkId,
-        defaultTokenId: updateData.defaultTokenId,
-        configuration: updateData.configuration,
+        categoryId: updateData.categoryId,
+        content: updateData.content,
         isActive: updateData.isActive
       };
 
@@ -184,7 +198,7 @@ export class TemplateService {
     });
 
     try {
-      await this.templateRepository.softDelete(tenantContext, templateId);
+      await this.templateRepository.delete(tenantContext, templateId);
 
       this.logger.info('Template deleted successfully', {
         templateId,
@@ -207,7 +221,7 @@ export class TemplateService {
     tenantContext: TenantContext,
     searchOptions: TemplateSearchOptions = {},
     queryOptions: QueryOptions = {}
-  ): Promise<PaginatedResult<InvoiceTemplate>> {
+  ): Promise<PaginatedResult<Template>> {
     this.logger.info('Searching templates', {
       searchOptions,
       queryOptions,
@@ -245,7 +259,7 @@ export class TemplateService {
     tenantContext: TenantContext,
     templateId: string,
     newName: string
-  ): Promise<InvoiceTemplate> {
+  ): Promise<Template> {
     this.logger.info('Duplicating template', {
       templateId,
       newName,
@@ -253,7 +267,7 @@ export class TemplateService {
     });
 
     try {
-      const template = await this.templateRepository.duplicate(
+      const template = await this.templateRepository.duplicateTemplate(
         tenantContext,
         templateId,
         newName
@@ -354,7 +368,7 @@ export class TemplateService {
     active: number;
     inactive: number;
     totalUsage: number;
-    mostUsed?: InvoiceTemplate;
+    mostUsed?: Template;
   }> {
     this.logger.info('Retrieving template statistics', {
       tenantId: tenantContext.tenantId
@@ -385,7 +399,7 @@ export class TemplateService {
   /**
    * Get active templates for invoice creation
    */
-  async getActiveTemplates(tenantContext: TenantContext): Promise<InvoiceTemplate[]> {
+  async getActiveTemplates(tenantContext: TenantContext): Promise<Template[]> {
     this.logger.info('Retrieving active templates', {
       tenantId: tenantContext.tenantId
     });
@@ -414,14 +428,16 @@ export class TemplateService {
   async getPopularTemplates(
     tenantContext: TenantContext,
     limit = 10
-  ): Promise<InvoiceTemplate[]> {
+  ): Promise<Template[]> {
     this.logger.info('Retrieving popular templates', {
       limit,
       tenantId: tenantContext.tenantId
     });
 
     try {
-      const templates = await this.templateRepository.getPopularTemplates(tenantContext, limit);
+      // Since popular templates are no longer supported in the new repository,
+      // we'll return active templates ordered by name as a fallback
+      const templates = await this.templateRepository.getActiveTemplates(tenantContext);
 
       this.logger.info('Popular templates retrieved successfully', {
         count: templates.length,
@@ -521,6 +537,245 @@ export class TemplateService {
       return result;
     } catch (error: any) {
       this.logger.error('Failed to create invoice from template', {
+        error: error.message,
+        templateId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get template categories with template counts
+   */
+  async getTemplateCategories(tenantContext: TenantContext): Promise<CategoryWithCount[]> {
+    this.logger.info('Getting template categories', {
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      // Get all active categories
+      const activeCategories = await this.templateCategoryRepository.getActiveCategories();
+
+      // Get template counts for each category with tenant-specific filtering
+      const result: CategoryWithCount[] = [];
+      
+      for (const category of activeCategories) {
+        // Count templates in this category for the current tenant (including system templates)
+        const templateCount = await this.templateRepository.countTemplatesByCategory(
+          tenantContext,
+          category.id
+        );
+
+        result.push({
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          slug: category.slug,
+          icon: category.icon,
+          color: category.color,
+          sortOrder: category.sortOrder,
+          isSystem: category.isSystem,
+          isActive: category.isActive,
+          count: templateCount,
+        });
+      }
+
+      // Sort by sort order and name
+      result.sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) {
+          return a.sortOrder - b.sortOrder;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+      this.logger.info('Template categories retrieved successfully', {
+        categoriesCount: result.length,
+        tenantId: tenantContext.tenantId
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to get template categories', {
+        error: error.message,
+        tenantId: tenantContext.tenantId
+      });
+      throw new FluxionError(
+        ErrorCodes.INTERNAL_ERROR,
+        'Failed to retrieve template categories',
+        500,
+        { originalError: error.message }
+      );
+    }
+  }
+
+  /**
+   * Get template with full S3 URLs constructed
+   * This method ensures backward compatibility while using relative paths
+   */
+  async getTemplateWithFullUrls(
+    tenantContext: TenantContext,
+    templateId: string
+  ): Promise<Template & { fullS3Url?: string; fullPreviewImageUrl?: string }> {
+    this.logger.info('Retrieving template with full URLs', {
+      templateId,
+      tenantId: tenantContext.tenantId
+    });
+
+    const template = await this.getTemplateById(tenantContext, templateId);
+
+    // URLs are now constructed via the entity getter methods
+    return {
+      ...template,
+      fullS3Url: template.fullS3Url,
+      fullPreviewImageUrl: template.fullPreviewImageUrl
+    };
+  }
+
+  /**
+   * Get system templates (public templates available to all organizations)
+   */
+  async getSystemTemplates(
+    categoryId?: string,
+    queryOptions: QueryOptions = {}
+  ): Promise<PaginatedResult<Template>> {
+    this.logger.info('Retrieving system templates', {
+      categoryId,
+      queryOptions
+    });
+
+    try {
+      // Use a dummy tenant context for system templates since they're public
+      const systemContext: TenantContext = {
+        tenantId: 'system', // This won't be used for system templates
+        userId: 'system',
+        role: 'admin'
+      };
+
+      const searchOptions: TemplateSearchOptions = {
+        isSystemTemplate: true,
+        categoryId,
+        isActive: true
+      };
+
+      const result = await this.templateRepository.searchTemplates(
+        systemContext,
+        searchOptions,
+        queryOptions
+      );
+
+      this.logger.info('System templates retrieved successfully', {
+        count: result.items.length,
+        total: result.total,
+        categoryId
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to get system templates', {
+        error: error.message,
+        categoryId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get template content for rendering
+   * Returns the template content stored in JSONB format
+   */
+  async getTemplateContent(
+    tenantContext: TenantContext,
+    templateId: string
+  ): Promise<Record<string, any>> {
+    this.logger.info('Fetching template content', {
+      templateId,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      const template = await this.getTemplateById(tenantContext, templateId);
+
+      this.logger.info('Template content retrieved', {
+        templateId,
+        contentKeys: Object.keys(template.content),
+        tenantId: tenantContext.tenantId
+      });
+
+      return template.content;
+    } catch (error: any) {
+      this.logger.error('Failed to get template content', {
+        error: error.message,
+        templateId,
+        tenantId: tenantContext.tenantId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Validate template structure and content
+   */
+  async validateTemplate(
+    tenantContext: TenantContext,
+    templateId: string
+  ): Promise<{
+    isValid: boolean;
+    issues: string[];
+    contentSummary: {
+      hasContent: boolean;
+      contentKeys: string[];
+      contentSize: number;
+    };
+  }> {
+    this.logger.info('Validating template', {
+      templateId,
+      tenantId: tenantContext.tenantId
+    });
+
+    try {
+      const template = await this.getTemplateById(tenantContext, templateId);
+      const issues: string[] = [];
+
+      // Check if content is present
+      if (!template.content || typeof template.content !== 'object') {
+        issues.push('Missing or invalid template content');
+      }
+
+      // Check if template has a valid category
+      if (!template.category) {
+        issues.push('Template category not found or inactive');
+      }
+
+      // Validate template name
+      if (!template.name || template.name.trim().length === 0) {
+        issues.push('Template name is required');
+      }
+
+      const contentKeys = template.content ? Object.keys(template.content) : [];
+      const contentSize = JSON.stringify(template.content || {}).length;
+
+      const result = {
+        isValid: issues.length === 0,
+        issues,
+        contentSummary: {
+          hasContent: contentKeys.length > 0,
+          contentKeys,
+          contentSize,
+        }
+      };
+
+      this.logger.info('Template validation completed', {
+        templateId,
+        isValid: result.isValid,
+        issuesCount: issues.length,
+        contentSize,
+        tenantId: tenantContext.tenantId
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to validate template', {
         error: error.message,
         templateId,
         tenantId: tenantContext.tenantId
