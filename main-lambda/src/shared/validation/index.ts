@@ -6,13 +6,13 @@ import { CONSTANTS } from '../../types/common';
 const walletAddress = z.string()
   .min(42, 'Invalid wallet address length')
   .max(42, 'Invalid wallet address length')
-  .regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid wallet address format');
+  .regex(/^0[xX][a-fA-F0-9]{40}$/, 'Invalid wallet address format');
   // Temporarily disable ethers validation for testing
   // .refine(address => ethers.isAddress(address), 'Invalid wallet address');
 
 const transactionHash = z.string()
   .length(66, 'Invalid transaction hash length')
-  .regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash format');
+  .regex(/^0[xX][a-fA-F0-9]{64}$/, 'Invalid transaction hash format');
 
 // ULID validation - 26 characters, alphanumeric, case-insensitive
 const ulidSchema = z.string()

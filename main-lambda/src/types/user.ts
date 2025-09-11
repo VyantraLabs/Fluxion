@@ -46,6 +46,7 @@ export interface User {
   wallet_address: string;
   email?: string;
   display_name?: string;
+  role?: string; // RBAC role (owner, admin, member, viewer)
   notification_preferences: {
     email_on_payment: boolean;
     email_on_invoice_viewed: boolean;
@@ -58,6 +59,7 @@ export interface User {
   };
   created_at: string;
   updated_at: string;
+  // SECURITY: Admin fields are NOT included in API responses - they're in JWT tokens only
 }
 
 export interface AuthResponse {
@@ -77,6 +79,12 @@ export interface JWTPayload {
   wallet_address: string;
   user_id?: string;
   tenant_id?: string;
+  role?: string; // RBAC role (owner, admin, member, viewer)
+  is_admin?: boolean;
+  is_super_admin?: boolean;
+  // System-level roles for admin access
+  system_roles?: string[]; // Array of system roles (super_admin, admin, support)
+  is_system_user?: boolean; // Flag indicating if user has any system roles
   iat: number;
   exp: number;
 }

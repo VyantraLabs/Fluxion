@@ -209,11 +209,8 @@ export class InvoiceService {
     this.logger.info('Getting public invoice', { invoiceId });
 
     try {
-      // Use a direct query without tenant context for public access
-      const invoice = await this.invoiceRepository.repository.findOne({
-        where: { id: invoiceId },
-        relations: ['network', 'token'],
-      });
+      // Use repository method for public access without tenant context
+      const invoice = await this.invoiceRepository.findByIdWithoutTenant(invoiceId);
       
       if (!invoice) {
         throw new FluxionError(ErrorCodes.NOT_FOUND, 'Invoice not found', 404);

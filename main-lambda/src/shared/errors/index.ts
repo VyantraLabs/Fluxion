@@ -76,6 +76,46 @@ export class RateLimitError extends FluxionError {
   }
 }
 
+export class AuthenticationError extends FluxionError {
+  constructor(message: string, details?: any) {
+    super(message, 'AUTHENTICATION_FAILED', 401, details);
+    this.name = 'AuthenticationError';
+  }
+}
+
+export class SignatureVerificationError extends FluxionError {
+  constructor(message: string = 'Invalid signature verification', details?: any) {
+    super(message, 'SIGNATURE_VERIFICATION_FAILED', 401, details);
+    this.name = 'SignatureVerificationError';
+  }
+}
+
+export class MessageExpiredError extends FluxionError {
+  constructor(message: string = 'Authentication message has expired', details?: any) {
+    super(message, 'AUTH_MESSAGE_EXPIRED', 401, details);
+    this.name = 'MessageExpiredError';
+  }
+}
+
+export class InvalidMessageFormatError extends FluxionError {
+  constructor(message: string = 'Invalid authentication message format', details?: any) {
+    super(message, 'INVALID_MESSAGE_FORMAT', 422, details);
+    this.name = 'InvalidMessageFormatError';
+  }
+}
+
+export class RepositoryOperationError extends FluxionError {
+  constructor(operation: string, entityName: string, originalError?: any) {
+    const message = `Failed to ${operation} ${entityName}`;
+    super(message, 'REPOSITORY_OPERATION_FAILED', 500, {
+      operation,
+      entityName,
+      originalError: originalError?.message || originalError
+    });
+    this.name = 'RepositoryOperationError';
+  }
+}
+
 export class DatabaseError extends FluxionError {
   constructor(message: string, details?: any) {
     super(message, 'DATABASE_ERROR', 500, details);
@@ -101,6 +141,24 @@ export const createBlockchainError = (message: string, details?: any) =>
 
 export const createPaymentVerificationError = (message: string, details?: any) => 
   new PaymentVerificationError(message, details);
+
+export const createAuthenticationError = (message: string, details?: any) =>
+  new AuthenticationError(message, details);
+
+export const createSignatureVerificationError = (message?: string, details?: any) =>
+  new SignatureVerificationError(message, details);
+
+export const createMessageExpiredError = (message?: string, details?: any) =>
+  new MessageExpiredError(message, details);
+
+export const createInvalidMessageFormatError = (message?: string, details?: any) =>
+  new InvalidMessageFormatError(message, details);
+
+export const createRepositoryOperationError = (operation: string, entityName: string, originalError?: any) =>
+  new RepositoryOperationError(operation, entityName, originalError);
+
+export const createRateLimitError = (message?: string) =>
+  new RateLimitError(message);
 
 // Type guard to check if error is a FluxionError
 export const isFluxionError = (error: any): error is FluxionError => {

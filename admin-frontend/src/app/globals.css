@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .admin-card {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+  }
+  
+  .admin-button-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  
+  .admin-button-secondary {
+    @apply bg-gray-100 hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+  }
+  
+  .admin-input {
+    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500;
+  }
+  
+  .admin-table {
+    @apply min-w-full divide-y divide-gray-200;
+  }
+  
+  .admin-table-header {
+    @apply bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+  
+  .admin-table-cell {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
+  }
+  
+  .admin-badge {
+    @apply inline-flex px-2 py-1 text-xs font-semibold rounded-full;
+  }
+  
+  .admin-badge-success {
+    @apply admin-badge bg-green-100 text-green-800;
+  }
+  
+  .admin-badge-warning {
+    @apply admin-badge bg-yellow-100 text-yellow-800;
+  }
+  
+  .admin-badge-error {
+    @apply admin-badge bg-red-100 text-red-800;
+  }
+  
+  .admin-badge-info {
+    @apply admin-badge bg-blue-100 text-blue-800;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

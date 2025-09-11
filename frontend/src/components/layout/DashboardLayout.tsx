@@ -15,16 +15,19 @@ import {
   Home,
   Bell,
   Layout,
+  Users,
 } from 'lucide-react';
 import { WalletConnectButton } from '@/components/web3/WalletConnectButton';
 import { useWalletAuth } from '@/contexts/AuthContext';
 import { cn } from '@/utils/helpers';
+import { canUserManageUsers } from '@/utils/permissions';
 
 interface NavigationItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   current?: boolean;
+  requiresPermission?: (user: any) => boolean;
 }
 
 const navigation: NavigationItem[] = [
@@ -33,6 +36,7 @@ const navigation: NavigationItem[] = [
   { name: 'Templates', href: '/dashboard/templates', icon: Layout },
   { name: 'Reminders', href: '/dashboard/reminders', icon: Bell },
   { name: 'Payments', href: '/dashboard/payments', icon: CreditCard },
+  { name: 'Users', href: '/dashboard/users', icon: Users, requiresPermission: canUserManageUsers },
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
@@ -67,11 +71,28 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     );
   }
 
-  // Add current property to navigation items
-  const navigationWithCurrent = navigation.map((item) => ({
-    ...item,
-    current: pathname === item.href || pathname.startsWith(`${item.href}/`),
-  }));
+  // Filter navigation items based on user permissions and add current property
+  const navigationWithCurrent = navigation
+    .filter((item) => {
+      if (item.requiresPermission) {
+        const hasPermission = item.requiresPermission(user);
+        console.debug(`Navigation item "${item.name}": hasPermission=${hasPermission}`, {
+          user: user ? {
+            id: user.id,
+            system_roles: user.system_roles,
+            organization_roles: user.organization_roles
+          } : null
+        });
+        return hasPermission;
+      }
+      return true;
+    })
+    .map((item) => ({
+      ...item,
+      current: pathname === item.href || pathname.startsWith(`${item.href}/`),
+    }));
+
+  console.debug('Filtered navigation items:', navigationWithCurrent.map(item => item.name));
 
   return (
     <div className="min-h-screen bg-secondary-50">

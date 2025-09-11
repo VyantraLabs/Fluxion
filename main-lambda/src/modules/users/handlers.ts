@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { UserService } from './service';
 import { UsersService } from '@/shared/services/users.service';
-import { getDatabase } from '@/shared/database/client';
+import { RBACService } from '@/shared/services/rbac.service';
 // Unused import removed: UpdateUserProfileSchema
 import { 
   WalletAuthMessageSchema,
@@ -25,8 +25,9 @@ import { APIResponse } from '@/types/common';
 
 const router = Router();
 const userService = new UserService();
-const db = getDatabase();
-const usersService = new UsersService(db);
+// Removed database client dependency
+const usersService = new UsersService();
+const rbacService = new RBACService();
 const logger = new Logger('UserHandlers');
 
 // Note: Tenant context middleware is applied per route as needed
@@ -102,39 +103,74 @@ router.post('/auth/message',
   })
 );
 
-// Wallet authentication handler function (for EXISTING users only)
+// Wallet authentication handler function (for EXISTING users only)  
 const handleWalletAuthentication = asyncHandler(async (req: Request, res: Response) => {
   const tenantContext = getTenantContext(req);
+  const requestId = `api_auth_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   
   try {
-    // Use the UserService which properly handles existing vs new users
     const authResponse = await userService.authenticateWallet(req.body);
     
-    logger.info('User authenticated via API', { 
+    logger.info('User authenticated successfully via API', { 
       wallet_address: req.body.wallet_address,
-      user_id: authResponse.user.id 
+      user_id: authResponse.user.id,
+      request_id: requestId
     });
     
     res.success(authResponse);
+    
   } catch (error: any) {
-    logger.error('Authentication failed', { 
+    // Proper error classification with correct HTTP status codes
+    const errorCode = error.code || 'UNKNOWN_ERROR';
+    const statusCode = error.statusCode || 500;
+    
+    logger.error('Authentication failed via API', { 
       error: error.message,
-      code: error.code,
-      wallet_address: req.body.wallet_address
+      error_code: errorCode,
+      status_code: statusCode,
+      wallet_address: req.body.wallet_address,
+      error_type: error.name || 'UnknownError',
+      request_id: requestId
     });
     
-    // If user not found, return proper 404 response for frontend to handle
-    if (error.code === 'NOT_FOUND') {
+    // Authentication Errors (401)
+    if (errorCode === 'AUTHENTICATION_FAILED' || 
+        errorCode === 'SIGNATURE_VERIFICATION_FAILED' ||
+        errorCode === 'AUTH_MESSAGE_EXPIRED' ||
+        errorCode === 'UNAUTHORIZED') {
+      return res.error(errorCode, error.message, 401);
+    }
+    
+    // User Not Found (404) 
+    if (errorCode === 'NOT_FOUND') {
       return res.error('NOT_FOUND', 'User not found. Please complete onboarding first.', 404);
     }
     
-    // If unauthorized (invalid signature, etc.)
-    if (error.code === 'UNAUTHORIZED') {
-      return res.error('UNAUTHORIZED', error.message, 401);
+    // Client Errors (422)
+    if (errorCode === 'INVALID_MESSAGE_FORMAT' ||
+        errorCode === 'VALIDATION_ERROR') {
+      return res.error(errorCode, error.message, 422);
     }
     
-    // For other errors, return 500
-    return res.error('INTERNAL_ERROR', 'Authentication failed', 500);
+    // Rate Limiting (429)
+    if (errorCode === 'RATE_LIMIT_EXCEEDED') {
+      return res.error(errorCode, error.message, 429);
+    }
+    
+    // Server Errors (500) - Only for actual system failures
+    logger.error('Internal server error during authentication', {
+      error: error.message,
+      error_code: errorCode,
+      stack: error.stack,
+      wallet_address: req.body.wallet_address,
+      request_id: requestId
+    });
+    
+    return res.error(
+      'INTERNAL_ERROR', 
+      'Authentication system temporarily unavailable',
+      500
+    );
   }
 });
 
@@ -393,7 +429,7 @@ router.get('/profile',
   authenticateJWT, 
   extractTenantContext(), // Extract tenant context after JWT auth
   asyncHandler(async (req: Request, res: Response) => {
-    const walletAddress = req.context!.userId!;
+    const walletAddress = req.context!.walletAddress!;
     const tenantContext = getTenantContext(req);
     
     // Try new multi-table service first
@@ -497,7 +533,7 @@ router.put('/profile',
   extractTenantContext(), // Extract tenant context after JWT auth
   validateRequest({ body: UpdateUserSchema }),
   asyncHandler(async (req: Request, res: Response) => {
-    const walletAddress = req.context!.userId!;
+    const walletAddress = req.context!.walletAddress!;
     const tenantContext = getTenantContext(req);
     
     // Try new multi-table service first
@@ -553,7 +589,7 @@ router.get('/stats',
   authenticateJWT,
   extractTenantContext(), // Extract tenant context after JWT auth
   asyncHandler(async (req: Request, res: Response) => {
-    const walletAddress = req.context!.userId!;
+    const walletAddress = req.context!.walletAddress!;
 
     const stats = await userService.getUserStats(walletAddress);
 
@@ -600,7 +636,7 @@ router.delete('/profile',
   authenticateJWT,
   extractTenantContext(), // Extract tenant context after JWT auth
   asyncHandler(async (req: Request, res: Response) => {
-    const walletAddress = req.context!.userId!;
+    const walletAddress = req.context!.walletAddress!;
     await userService.deleteUser(walletAddress);
     
     logger.info('User account deleted via API', { wallet_address: walletAddress });
@@ -967,6 +1003,233 @@ router.post('/onboarding/complete',
       }
       
       return res.error('INTERNAL_ERROR', 'Failed to complete onboarding', 500);
+    }
+  })
+);
+
+/**
+ * DEPRECATED ENDPOINT - REMOVED FOR SECURITY AND ARCHITECTURE REASONS
+ * 
+ * The /users/organization-users endpoint has been removed because:
+ * 
+ * 1. **Security Architecture**: Admin functionality should be centralized in dedicated
+ *    admin endpoints rather than being mixed with user endpoints. This follows the
+ *    principle of separation of concerns.
+ * 
+ * 2. **Proper Admin Flow**: Admins should use the dedicated admin API endpoints:
+ *    - GET /admin/organizations/{id}/users - for organization user management
+ *    - These endpoints have proper super admin/system admin authentication
+ *    - They provide comprehensive user management features with proper audit logging
+ * 
+ * 3. **RBAC Consistency**: The admin endpoints use the established RBAC system
+ *    with proper role-based access controls, whereas this endpoint mixed user
+ *    and admin permissions in an inconsistent way.
+ * 
+ * 4. **API Consistency**: Regular users don't need to see all organization users.
+ *    If regular organization members need to see team members, a separate
+ *    endpoint like GET /organizations/my-members can be created with appropriate
+ *    permission checks.
+ * 
+ * 5. **Audit Trail**: Admin operations require comprehensive audit logging,
+ *    which is properly implemented in the admin module.
+ * 
+ * **Migration Path for Clients**:
+ * - Admin users: Use GET /admin/organizations/{organizationId}/users
+ * - Regular users: Use GET /organizations/my-members (to be implemented if needed)
+ * 
+ * This removal improves security, maintains proper separation of concerns,
+ * and follows established patterns in the codebase.
+ */
+
+/**
+ * @swagger
+ * /users/organizations:
+ *   get:
+ *     tags:
+ *       - Users
+ *     summary: Get user's accessible organizations (Admin functionality)
+ *     description: |
+ *       Returns all organizations where the authenticated user has access to manage users.
+ *       This endpoint is specifically for admin users who may have access to multiple organizations.
+ *       Regular users will see organizations where they have owner or admin roles.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User's accessible organizations retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     organizations:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             example: '01HXYZ123456789ABCDEF000000'
+ *                           name:
+ *                             type: string
+ *                             example: 'Acme Corporation'
+ *                           slug:
+ *                             type: string
+ *                             example: 'acme-corporation-742d35cc'
+ *                           role:
+ *                             type: string
+ *                             example: 'owner'
+ *                           userCount:
+ *                             type: integer
+ *                             example: 15
+ *                           canManageUsers:
+ *                             type: boolean
+ *                             example: true
+ *                           isActive:
+ *                             type: boolean
+ *                             example: true
+ *                 meta:
+ *                   $ref: '#/components/schemas/ResponseMeta'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Insufficient permissions to view organization users
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get('/organizations',
+  authenticateJWT,
+  extractTenantContext(),
+  requireTenantContext(),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const walletAddress = req.context!.walletAddress!;
+    
+    try {
+      // Get authenticated user
+      const authUser = await usersService.getUserByWallet(tenantContext, walletAddress);
+      
+      // Check if user has system admin permissions (can see all organizations)
+      const isSystemAdmin = await rbacService.hasPermission(
+        authUser.id,
+        ['system:cross_tenant', 'system:admin'],
+        { requireAll: false, allowSystemOverride: true }
+      );
+      
+      let accessibleOrganizations: any[] = [];
+      
+      if (isSystemAdmin) {
+        // System admins can see all organizations
+        const allOrgsQuery = `
+          SELECT 
+            o.id,
+            o.name,
+            o.slug,
+            o.is_active as "isActive",
+            COUNT(u.id) as "userCount",
+            'system_admin' as role,
+            true as "canManageUsers"
+          FROM organizations o
+          LEFT JOIN users u ON u.organization_id = o.id AND u.deleted_at IS NULL
+          WHERE o.deleted_at IS NULL
+          GROUP BY o.id, o.name, o.slug, o.is_active
+          ORDER BY o.name ASC
+        `;
+        
+        accessibleOrganizations = await AppDataSource.query(allOrgsQuery);
+      } else {
+        // Get user's roles across organizations
+        const userRoles = await rbacService.getUserRoles(authUser.id);
+        
+        if (userRoles.length === 0) {
+          // User has no RBAC roles, return their primary organization if they have user management permissions
+          const canManageUsers = authUser.role === 'owner' || authUser.role === 'admin';
+          
+          if (canManageUsers) {
+            const primaryOrgQuery = `
+              SELECT 
+                o.id,
+                o.name,
+                o.slug,
+                o.is_active as "isActive",
+                COUNT(u.id) as "userCount",
+                $2 as role,
+                true as "canManageUsers"
+              FROM organizations o
+              LEFT JOIN users u ON u.organization_id = o.id AND u.deleted_at IS NULL
+              WHERE o.id = $1 AND o.deleted_at IS NULL
+              GROUP BY o.id, o.name, o.slug, o.is_active
+            `;
+            
+            accessibleOrganizations = await AppDataSource.query(primaryOrgQuery, [
+              authUser.organizationId,
+              authUser.role
+            ]);
+          }
+        } else {
+          // User has RBAC roles, get organizations where they can manage users
+          const organizationIds = [...new Set(userRoles.map(ur => ur.organizationId))].filter(Boolean);
+          
+          if (organizationIds.length > 0) {
+            const userManagementRoles = ['owner', 'admin', 'system_admin', 'super_admin'];
+            const canManageOrgs = userRoles.filter(ur => 
+              ur.organizationId && userManagementRoles.includes(ur.role.key) && !ur.isExpired
+            );
+            
+            const manageableOrgIds = canManageOrgs.map(ur => ur.organizationId);
+            
+            if (manageableOrgIds.length > 0) {
+              const placeholders = manageableOrgIds.map((_, i) => `$${i + 1}`).join(',');
+              
+              const orgsQuery = `
+                SELECT 
+                  o.id,
+                  o.name,
+                  o.slug,
+                  o.is_active as "isActive",
+                  COUNT(u.id) as "userCount",
+                  'owner' as role,
+                  true as "canManageUsers"
+                FROM organizations o
+                LEFT JOIN users u ON u.organization_id = o.id AND u.deleted_at IS NULL
+                WHERE o.id IN (${placeholders}) AND o.deleted_at IS NULL
+                GROUP BY o.id, o.name, o.slug, o.is_active
+                ORDER BY o.name ASC
+              `;
+              
+              accessibleOrganizations = await AppDataSource.query(orgsQuery, manageableOrgIds);
+            }
+          }
+        }
+      }
+      
+      logger.info('User organizations for management retrieved', {
+        userId: authUser.id,
+        organizationCount: accessibleOrganizations.length,
+        isSystemAdmin
+      });
+      
+      res.success({
+        organizations: accessibleOrganizations
+      });
+      
+    } catch (error: any) {
+      logger.error('Failed to retrieve user organizations for management', {
+        error: error.message,
+        walletAddress
+      });
+      
+      if (error.code === 'NOT_FOUND') {
+        return res.error('NOT_FOUND', 'User not found', 404);
+      }
+      
+      return res.error('INTERNAL_ERROR', 'Failed to retrieve organizations', 500);
     }
   })
 );

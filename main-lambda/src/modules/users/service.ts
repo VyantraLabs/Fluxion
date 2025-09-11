@@ -6,7 +6,13 @@ import {
   createNotFoundError, 
   createUnauthorizedError, 
   createValidationError,
-  FluxionError
+  createAuthenticationError,
+  createSignatureVerificationError,
+  createMessageExpiredError,
+  createInvalidMessageFormatError,
+  createRepositoryOperationError,
+  FluxionError,
+  normalizeError
 } from '@/shared/errors';
 import { ErrorCodes } from '@/types/common';
 import { 
@@ -26,77 +32,241 @@ export class UserService {
   private logger = new Logger('UserService');
 
   /**
-   * Authenticate user with wallet signature
+   * Authenticate user with wallet signature (FAULT-TOLERANT VERSION)
    * Returns success only for EXISTING users, throws NOT_FOUND for new users
    */
   async authenticateWallet(data: AuthenticateWalletDTO): Promise<AuthResponse> {
-    this.logger.info('Authenticating wallet', { 
-      wallet_address: data.wallet_address 
+    const requestId = `auth_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    
+    this.logger.info('Starting wallet authentication', { 
+      wallet_address: data.wallet_address,
+      request_id: requestId 
     });
 
-    // Verify the signature
     try {
-      const isValidSignature = this.blockchain.verifyWalletSignature(
-        data.message,
-        data.signature,
-        data.wallet_address
-      );
+      // Step 1: Signature Verification (CRITICAL - Must succeed)
+      let isValidSignature = false;
+      try {
+        isValidSignature = this.blockchain.verifyWalletSignature(
+          data.message,
+          data.signature,
+          data.wallet_address
+        );
+      } catch (blockchainError: any) {
+        this.logger.error('Blockchain signature verification failed', { 
+          error: blockchainError.message,
+          wallet_address: data.wallet_address,
+          request_id: requestId 
+        });
+        throw createSignatureVerificationError('Signature verification service unavailable');
+      }
       
       if (!isValidSignature) {
-        throw createUnauthorizedError('Invalid signature - wallet address mismatch');
+        this.logger.warn('Invalid signature provided', { 
+          wallet_address: data.wallet_address,
+          request_id: requestId 
+        });
+        throw createSignatureVerificationError('Invalid wallet signature');
       }
 
-      // Parse the message to validate timestamp and prevent replay attacks
-      const authMessage = this.parseAuthMessage(data.message);
+      // Step 2: Message Validation (CRITICAL - Must succeed)
+      let authMessage: AuthMessage;
+      try {
+        authMessage = this.parseAuthMessage(data.message);
+      } catch (parseError: any) {
+        this.logger.error('Failed to parse auth message', { 
+          error: parseError.message,
+          wallet_address: data.wallet_address,
+          request_id: requestId 
+        });
+        throw createInvalidMessageFormatError('Authentication message format is invalid');
+      }
+
       const now = Date.now();
       const messageAge = now - authMessage.timestamp;
       
       // Message should be less than 5 minutes old
       if (messageAge > 5 * 60 * 1000) {
-        throw createUnauthorizedError('Authentication message too old');
+        this.logger.warn('Authentication message expired', { 
+          wallet_address: data.wallet_address,
+          message_age_ms: messageAge,
+          request_id: requestId 
+        });
+        throw createMessageExpiredError('Authentication message has expired');
       }
 
-      // Use the shared users service to check if user exists first
+      // Step 3: User Lookup (CRITICAL - Must succeed)
       const { UsersService } = await import('@/shared/services/users.service');
       const usersService = new UsersService(this.db);
       
-      // Check if user exists - DO NOT CREATE if not found
-      // Note: getUserByWallet does cross-tenant search, so tenant context is not used for filtering
       let userRecord: any;
-      
       try {
         userRecord = await usersService.getUserByWallet({ tenantId: '' }, data.wallet_address);
-        this.logger.info('Existing user found for authentication', { 
+        this.logger.info('User found for authentication', { 
           wallet_address: data.wallet_address, 
-          user_id: userRecord.id 
+          user_id: userRecord.id,
+          request_id: requestId 
         });
       } catch (error: any) {
         if (error.code === 'NOT_FOUND' || error.code === ErrorCodes.NOT_FOUND) {
-          // User doesn't exist - return 404 for frontend to handle onboarding
-          this.logger.info('User not found during authentication', { wallet_address: data.wallet_address });
-          throw createNotFoundError('User not found. Please complete onboarding first.', data.wallet_address);
+          this.logger.info('User not found during authentication', { 
+            wallet_address: data.wallet_address,
+            request_id: requestId 
+          });
+          throw createNotFoundError('User', data.wallet_address);
         } else {
-          throw error;
+          this.logger.error('User lookup failed', { 
+            error: error.message,
+            wallet_address: data.wallet_address,
+            request_id: requestId 
+          });
+          throw createAuthenticationError('User lookup failed');
         }
       }
       
-      // Generate JWT token with proper user ID and tenant ID
+      // Step 4: JWT Secret Validation (CRITICAL - Must succeed)
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
-        throw new Error('JWT_SECRET not configured');
+        this.logger.error('JWT_SECRET not configured', { request_id: requestId });
+        throw createAuthenticationError('Authentication system configuration error');
       }
 
-      const tokenPayload: JWTPayload = {
-        wallet_address: data.wallet_address,
-        user_id: userRecord.id, // Use actual user UUID from database
-        tenant_id: userRecord.tenant_id, // Use actual tenant ID from user record
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
-      };
+      // Step 5: RBAC Role Resolution (NON-CRITICAL - Graceful degradation)
+      // Start with the user's database role, fallback to 'member' if empty
+      let userRole = userRecord.role || 'member';
+      try {
+        const { RBACService } = await import('@/shared/services/rbac.service');
+        const { AppDataSource } = await import('@/database/data-source');
+        const rbacService = new RBACService(AppDataSource);
+        
+        const userRoles = await rbacService.getUserRoles(userRecord.id, userRecord.tenant_id);
+        if (userRoles && userRoles.length > 0) {
+          // RBAC role overrides database role when present
+          const sortedRoles = userRoles.sort((a, b) => (b.role?.priority || 0) - (a.role?.priority || 0));
+          const primaryRole = sortedRoles[0];
+          userRole = primaryRole.role?.key || userRole; // Keep database role if RBAC key is empty
+        }
+        
+        this.logger.info('RBAC role resolved', { 
+          user_id: userRecord.id,
+          database_role: userRecord.role,
+          final_role: userRole,
+          rbac_roles_count: userRoles?.length || 0,
+          request_id: requestId
+        });
+      } catch (rbacError: any) {
+        this.logger.warn('RBAC role resolution failed, using default', { 
+          user_id: userRecord.id,
+          error: rbacError.message,
+          request_id: requestId
+        });
+        // Continue with default role - this is non-critical
+      }
 
-      const token = jwt.sign(tokenPayload, jwtSecret);
+      // Step 6: Admin Flags Resolution (NON-CRITICAL - Graceful degradation)
+      let isAdmin = false;
+      let isSuperAdmin = false;
+      let lastLoginUpdated = false;
+      
+      try {
+        const { UserRepository } = await import('@/database/repositories/UserRepository');
+        const userRepo = new UserRepository();
+        const typeormUser = await userRepo.findById({ tenantId: userRecord.tenant_id }, userRecord.id);
+        
+        if (typeormUser) {
+          isAdmin = typeormUser.isAdmin || userRecord.is_admin || false;
+          isSuperAdmin = typeormUser.isSuperAdmin || userRecord.is_super_admin || false;
+          
+          // Try to update last login (NON-CRITICAL)
+          try {
+            typeormUser.lastLoginAt = new Date();
+            await userRepo.save(typeormUser);
+            lastLoginUpdated = true;
+            
+            this.logger.debug('Last login timestamp updated', { 
+              user_id: userRecord.id,
+              request_id: requestId
+            });
+          } catch (saveError: any) {
+            this.logger.warn('Failed to update last login timestamp', {
+              user_id: userRecord.id,
+              error: saveError.message,
+              request_id: requestId
+            });
+            // Continue - this is non-critical
+          }
+        }
+      } catch (repoError: any) {
+        this.logger.warn('Failed to resolve admin flags', {
+          user_id: userRecord.id,
+          error: repoError.message,
+          request_id: requestId
+        });
+        // Continue with defaults - this is non-critical
+      }
 
-      // Transform userRecord to User format for response
+      // Step 7: Audit Log Creation (NON-CRITICAL - Graceful degradation)
+      try {
+        const { AuditLogRepository } = await import('@/database/repositories/AuditLogRepository');
+        const auditRepo = new AuditLogRepository();
+        
+        await auditRepo.create({ tenantId: userRecord.tenant_id }, {
+          organizationId: userRecord.tenant_id,
+          userId: userRecord.id,
+          action: 'USER_LOGIN',
+          resource: 'user',
+          recordId: userRecord.id,
+          details: {
+            wallet_address: userRecord.wallet_address,
+            user_agent: 'API',
+            login_method: 'wallet_signature',
+            last_login_updated: lastLoginUpdated
+          },
+          metadata: {
+            timestamp: new Date().toISOString(),
+            source: 'authentication_service',
+            request_id: requestId
+          }
+        });
+        
+        this.logger.debug('Audit log created for user login', { 
+          user_id: userRecord.id,
+          request_id: requestId
+        });
+      } catch (auditError: any) {
+        this.logger.warn('Failed to create login audit log', {
+          user_id: userRecord.id,
+          error: auditError.message,
+          request_id: requestId
+        });
+        // Continue - this is non-critical
+      }
+      
+      // Step 8: JWT Token Generation (CRITICAL - Must succeed)
+      let token: string;
+      try {
+        const tokenPayload: JWTPayload = {
+          wallet_address: data.wallet_address,
+          user_id: userRecord.id,
+          tenant_id: userRecord.tenant_id,
+          role: userRole,
+          is_admin: isAdmin,
+          is_super_admin: isSuperAdmin,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+        };
+
+        token = jwt.sign(tokenPayload, jwtSecret);
+      } catch (jwtError: any) {
+        this.logger.error('JWT token generation failed', {
+          user_id: userRecord.id,
+          error: jwtError.message,
+          request_id: requestId
+        });
+        throw createAuthenticationError('Token generation failed');
+      }
+
+      // Step 9: Response Construction (CRITICAL - Must succeed)
       const user: User = {
         id: userRecord.id,
         wallet_address: userRecord.wallet_address,
@@ -105,41 +275,47 @@ export class UserService {
         notification_preferences: userRecord.notification_preferences,
         stats: userRecord.stats,
         created_at: userRecord.created_at,
-        updated_at: userRecord.updated_at
+        updated_at: userRecord.updated_at,
+        role: userRole
       };
 
-      // Determine if user needs onboarding (existing users might still need to complete profile)
       const needsOnboarding = !userRecord.organization?.name || 
-        userRecord.organization.name.includes("'s Organization"); // Default generated name
+        userRecord.organization.name.includes("'s Organization");
 
       const authResponse: AuthResponse = {
         token,
         user,
-        expires_at: new Date(tokenPayload.exp * 1000).toISOString(),
+        expires_at: new Date((Math.floor(Date.now() / 1000) + 24 * 60 * 60) * 1000).toISOString(),
         needsOnboarding,
         organization: userRecord.organization,
-        isNewUser: false // This endpoint only handles existing users
+        isNewUser: false
       };
 
       this.logger.info('Wallet authentication successful', { 
         wallet_address: data.wallet_address,
         user_id: userRecord.id,
         tenant_id: userRecord.tenant_id,
-        needs_onboarding: needsOnboarding
+        needs_onboarding: needsOnboarding,
+        last_login_updated: lastLoginUpdated,
+        request_id: requestId
       });
 
       return authResponse;
-    } catch (error) {
+      
+    } catch (error: any) {
+      // Classify and log errors properly
+      const normalizedError = normalizeError(error);
+      
       this.logger.error('Wallet authentication failed', { 
-        error,
-        wallet_address: data.wallet_address 
+        error: normalizedError.message,
+        error_code: normalizedError.code,
+        status_code: normalizedError.statusCode,
+        wallet_address: data.wallet_address,
+        request_id: requestId
       });
       
-      if (error instanceof Error && error.message.includes('invalid signature')) {
-        throw createUnauthorizedError('Invalid signature');
-      }
-      
-      throw error;
+      // Re-throw the properly classified error
+      throw normalizedError;
     }
   }
 
@@ -204,6 +380,37 @@ export class UserService {
         }
       });
 
+      // Get RBAC role information for the user FIRST
+      // Start with the user's database role, fallback to 'member' if empty  
+      let userRole = userRecord.role || 'member';
+      try {
+        const { RBACService } = await import('@/shared/services/rbac.service');
+        const { AppDataSource } = await import('@/database/data-source');
+        const rbacService = new RBACService(AppDataSource);
+        
+        // Get user's primary role within their organization
+        const userRoles = await rbacService.getUserRoles(userRecord.id, userRecord.tenant_id);
+        if (userRoles && userRoles.length > 0) {
+          // RBAC role overrides database role when present
+          const sortedRoles = userRoles.sort((a, b) => (b.role?.priority || 0) - (a.role?.priority || 0));
+          const primaryRole = sortedRoles[0];
+          userRole = primaryRole.role?.key || userRole; // Keep database role if RBAC key is empty
+        }
+        
+        this.logger.info('User RBAC role resolved for auth', { 
+          user_id: userRecord.id,
+          wallet_address: userRecord.wallet_address,
+          role: userRole,
+          total_roles: userRoles?.length || 0,
+          all_roles: userRoles?.map(r => ({ key: r.role?.key, priority: r.role?.priority }))
+        });
+      } catch (rbacError) {
+        this.logger.warn('Failed to get RBAC role, using default', { 
+          user_id: userRecord.id,
+          error: rbacError.message 
+        });
+      }
+
       // Generate JWT token
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
@@ -214,6 +421,7 @@ export class UserService {
         wallet_address: data.wallet_address,
         user_id: userRecord.id,
         tenant_id: userRecord.tenant_id,
+        role: userRole, // Include role from RBAC system (now properly initialized)
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
       };
@@ -229,7 +437,10 @@ export class UserService {
         notification_preferences: userRecord.notification_preferences,
         stats: userRecord.stats,
         created_at: userRecord.created_at,
-        updated_at: userRecord.updated_at
+        updated_at: userRecord.updated_at,
+        // SECURITY: Admin flags are in JWT token only, NOT in API response
+        // Include basic role for frontend permissions (not sensitive admin flags)
+        role: userRole
       };
 
       const authResponse: AuthResponse = {
@@ -285,17 +496,30 @@ export class UserService {
    * Parse authentication message to extract components
    */
   private parseAuthMessage(message: string): AuthMessage {
+    if (!message || typeof message !== 'string') {
+      throw createInvalidMessageFormatError('Authentication message is required and must be a string');
+    }
+
     const nonceMatch = message.match(/Nonce: ([a-zA-Z0-9]+)/);
     const timestampMatch = message.match(/Timestamp: (\d+)/);
 
-    if (!nonceMatch || !timestampMatch) {
-      throw createValidationError('Invalid authentication message format');
+    if (!nonceMatch) {
+      throw createInvalidMessageFormatError('Authentication message missing nonce');
+    }
+    
+    if (!timestampMatch) {
+      throw createInvalidMessageFormatError('Authentication message missing timestamp');
+    }
+
+    const timestamp = parseInt(timestampMatch[1]);
+    if (isNaN(timestamp) || timestamp <= 0) {
+      throw createInvalidMessageFormatError('Authentication message has invalid timestamp');
     }
 
     return {
       message,
       nonce: nonceMatch[1],
-      timestamp: parseInt(timestampMatch[1])
+      timestamp
     };
   }
 
@@ -385,7 +609,7 @@ export class UserService {
     try {
       // Use the new multi-table PostgreSQL service with proper error handling
       const { UsersService } = await import('@/shared/services/users.service');
-      const usersService = new UsersService(this.db);
+      const usersService = new UsersService();
       const tenantContext = { tenantId: '01HBXYZ0000000000000000000' }; // Default tenant ULID for consistency
 
       // Use getOrCreateUserByWallet to handle tenant resolution and user creation

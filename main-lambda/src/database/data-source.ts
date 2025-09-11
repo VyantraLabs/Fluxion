@@ -22,6 +22,12 @@ import { NotificationQueue } from './entities/NotificationQueue';
 import { NotificationSettings } from './entities/NotificationSettings';
 import { PaymentVerificationJob } from './entities/PaymentVerificationJob';
 import { ReminderJob } from './entities/ReminderJob';
+import { SystemSettings } from './entities/SystemSettings';
+// RBAC entities
+import { Role } from './entities/Role';
+import { Permission } from './entities/Permission';
+import { RolePermission } from './entities/RolePermission';
+import { UserRole } from './entities/UserRole';
 
 const logger = new Logger('DataSource');
 
@@ -67,6 +73,12 @@ export const AppDataSource = new DataSource({
     NotificationSettings,
     PaymentVerificationJob,
     ReminderJob,
+    SystemSettings,
+    // RBAC entities
+    Role,
+    Permission,
+    RolePermission,
+    UserRole,
   ],
   
   // Migration configuration

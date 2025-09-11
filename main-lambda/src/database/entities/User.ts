@@ -19,8 +19,8 @@ import { PayrollBatch } from './PayrollBatch';
 import { AuditLog } from './AuditLog';
 import { Template } from './Template';
 import { NotificationSettings } from './NotificationSettings';
+import { UserRole } from './UserRole';
 
-export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
 @Entity('users')
 @Index(['email', 'organizationId'], { unique: true })
@@ -46,13 +46,6 @@ export class User {
   @Column({ name: 'last_name', type: 'varchar', length: 100, nullable: true })
   lastName?: string;
 
-  @Column({
-    type: 'varchar',
-    length: 50,
-    default: 'member',
-    nullable: false,
-  })
-  role!: UserRole;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
@@ -62,6 +55,7 @@ export class User {
 
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt?: Date;
+
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
@@ -95,6 +89,9 @@ export class User {
   @OneToMany(() => NotificationSettings, settings => settings.user, { cascade: true })
   notificationSettings!: NotificationSettings[];
 
+  @OneToMany(() => UserRole, userRole => userRole.user, { cascade: true })
+  userRoles!: UserRole[];
+
   // Computed properties
   get fullName(): string | null {
     if (!this.firstName && !this.lastName) return null;
@@ -105,40 +102,37 @@ export class User {
     return this.fullName || this.email;
   }
 
-  get isOwner(): boolean {
-    return this.role === 'owner';
-  }
-
-  get isAdmin(): boolean {
-    return this.role === 'owner' || this.role === 'admin';
-  }
-
-  get canManageUsers(): boolean {
-    return this.isAdmin;
-  }
-
-  get canCreateInvoices(): boolean {
-    return this.role !== 'viewer';
-  }
-
-  get canViewReports(): boolean {
-    return this.isAdmin;
-  }
+  // RBAC-based permission methods (to be populated by RBAC service)
+  // These will be computed based on user's roles and permissions
+  // Use RBACService.hasPermission() or similar methods instead of these getters
 
   // Methods
   toJSON() {
+    // SECURITY: Remove sensitive data from API responses
+    // These should only be available via JWT tokens, not API responses
+    const { 
+      deletedAt, 
+      organizationId, // Sensitive - use tenant context instead
+      ...safeData 
+    } = this;
+    
+    return {
+      ...safeData,
+      fullName: this.fullName,
+      displayName: this.displayName,
+      // Permissions are now computed via RBAC service and included in JWT tokens
+    };
+  }
+
+  // Secure method for admin contexts only (never exposed in API responses)
+  toAdminJSON() {
     const { deletedAt, ...rest } = this;
     return {
       ...rest,
       fullName: this.fullName,
       displayName: this.displayName,
-      permissions: {
-        isOwner: this.isOwner,
-        isAdmin: this.isAdmin,
-        canManageUsers: this.canManageUsers,
-        canCreateInvoices: this.canCreateInvoices,
-        canViewReports: this.canViewReports,
-      },
+      // Permissions are now computed via RBAC service
+      // Use RBACService.getUserPermissions(userId) to get permissions
     };
   }
 
@@ -146,6 +140,9 @@ export class User {
   updateLastLogin(): void {
     this.lastLoginAt = new Date();
   }
+
+  // RBAC-based access management is now handled via UserRole entities
+  // Use RBACService.assignRole() and RBACService.removeRole() instead
 
   @BeforeInsert()
   generateId(): void {
@@ -164,7 +161,4 @@ export class User {
     return /^0x[a-fA-F0-9]{40}$/.test(address);
   }
 
-  static validateRole(role: string): role is UserRole {
-    return ['owner', 'admin', 'member', 'viewer'].includes(role);
-  }
 }

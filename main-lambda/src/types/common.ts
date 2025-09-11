@@ -72,6 +72,55 @@ export interface UserRecord extends BaseRecord {
     name: string;
     slug: string;
   };
+  // DEPRECATED: Admin fields moved to JWT-only for security
+  // These should not be included in API responses
+  is_admin?: boolean;
+  is_super_admin?: boolean;
+  admin_granted_at?: string;
+  admin_granted_by?: string;
+}
+
+// Safe version of UserRecord for API responses (removes sensitive data)
+export interface SafeUserRecord {
+  id: string;
+  wallet_address: string;
+  email?: string;
+  profile?: {
+    display_name?: string;
+    avatar_url?: string;
+    bio?: string;
+  };
+  notification_preferences?: {
+    email_on_payment: boolean;
+    email_on_invoice_viewed: boolean;
+    email_on_reminders: boolean;
+  };
+  stats?: {
+    invoice_count: number;
+    total_received: number;
+    last_active_at: string;
+  };
+  created_at: string;
+  updated_at: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
+// Utility function to sanitize UserRecord for API responses
+export function sanitizeUserRecord(userRecord: UserRecord): SafeUserRecord {
+  const {
+    tenant_id,      // Remove sensitive tenant_id
+    is_admin,       // Remove admin flags
+    is_super_admin, // Remove admin flags 
+    admin_granted_at,
+    admin_granted_by,
+    ...safeRecord
+  } = userRecord;
+  
+  return safeRecord;
 }
 
 export interface InvoiceRecord extends BaseRecord {
@@ -192,6 +241,11 @@ export interface RequestContext {
   userId?: string;
   walletAddress?: string;
   tenantId?: string;
+  userRole?: string;
+  isAdmin?: boolean;
+  isSuperAdmin?: boolean;
+  isSystemUser?: boolean;
+  systemRoles?: string[];
   functionName?: string;
   functionVersion?: string;
   timestamp: string;

@@ -14,6 +14,9 @@ export interface User {
   notification_preferences: NotificationPreferences;
   stats: UserStats;
   tenant_id?: string;
+  // RBAC roles from backend
+  system_roles: string[];
+  organization_roles: string[];
   created_at: DateString;
   updated_at: DateString;
 }

@@ -5,9 +5,14 @@ import {
   authenticateJWT, 
   validateRequest, 
   asyncHandler,
-  adminOnly 
+  adminOnly,
+  requireSystemRole,
+  requireSystemSuperAdmin,
+  requireSystemAdmin
 } from '@/shared/middleware';
+import { requireSuperAdmin, requireAdmin, auditAdminOperation } from '@/shared/middleware/super-admin';
 import { getTenantContext, extractTenantContext } from '@/shared/middleware/tenant';
+import { adminAuthRoutes } from './auth.handlers';
 import {
   CreateNetworkSchema,
   UpdateNetworkSchema,
@@ -20,6 +25,9 @@ import {
 const router = Router();
 const adminService = new AdminService();
 const logger = new Logger('AdminHandlers');
+
+// Mount admin authentication routes (no middleware, handles auth internally)
+router.use('/', adminAuthRoutes);
 
 // All admin routes require authentication and admin privileges
 router.use(authenticateJWT);
@@ -525,6 +533,899 @@ router.put('/tokens/:id',
     });
     
     res.success(token);
+  })
+);
+
+// =============================================================================
+// COMPREHENSIVE SYSTEM ADMIN ENDPOINTS
+// =============================================================================
+
+/**
+ * System Statistics and Health
+ */
+
+/**
+ * @swagger
+ * /admin/system/stats:
+ *   get:
+ *     tags:
+ *       - Admin System
+ *     summary: Get comprehensive system statistics
+ *     description: Retrieves platform-wide statistics including users, organizations, invoices, payments
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ *     responses:
+ *       200:
+ *         description: System statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     users:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         active:
+ *                           type: integer
+ *                         adminUsers:
+ *                           type: integer
+ *                         superAdminUsers:
+ *                           type: integer
+ *                         thisMonth:
+ *                           type: integer
+ *                     organizations:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         active:
+ *                           type: integer
+ *                         thisMonth:
+ *                           type: integer
+ *                     invoices:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         thisMonth:
+ *                           type: integer
+ *                         totalValue:
+ *                           type: string
+ *                         thisMonthValue:
+ *                           type: string
+ *                         averageValue:
+ *                           type: string
+ *                     payments:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         thisMonth:
+ *                           type: integer
+ *                         totalValue:
+ *                           type: string
+ *                         thisMonthValue:
+ *                           type: string
+ *                         successRate:
+ *                           type: number
+ */
+router.get('/system/stats',
+  auditAdminOperation('view_system_stats'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    
+    const stats = await adminService.getSystemStats(tenantContext);
+    
+    logger.info('Admin: System statistics retrieved', {
+      adminUser: tenantContext.userId,
+      totalUsers: stats.users.total,
+      totalOrganizations: stats.organizations.total
+    });
+    
+    res.success(stats);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/system/health:
+ *   get:
+ *     tags:
+ *       - Admin System
+ *     summary: Get system health status
+ *     description: Performs comprehensive health checks on database, Redis, external APIs, and storage
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ *     responses:
+ *       200:
+ *         description: System health check completed
+ */
+router.get('/system/health',
+  auditAdminOperation('view_system_health'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    
+    const health = await adminService.getSystemHealth(tenantContext);
+    
+    logger.info('Admin: System health check completed', {
+      adminUser: tenantContext.userId,
+      status: health.status
+    });
+    
+    res.success(health);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/system/maintenance:
+ *   post:
+ *     tags:
+ *       - Admin System
+ *     summary: Toggle maintenance mode (super admin only)
+ *     description: Enable or disable system-wide maintenance mode
+ *     security:
+ *       - bearerAuth: []
+ *       - superAdminAccess: []
+ */
+router.post('/system/maintenance',
+  requireSuperAdmin,
+  auditAdminOperation('toggle_maintenance_mode'),
+  validateRequest({
+    body: {
+      enabled: { type: 'boolean', required: true },
+      message: { type: 'string', optional: true },
+      estimatedDuration: { type: 'number', optional: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { enabled, message, estimatedDuration } = req.body;
+    
+    const maintenanceMode = await adminService.toggleMaintenanceMode(
+      tenantContext,
+      enabled,
+      message,
+      estimatedDuration
+    );
+    
+    logger.info('Admin: Maintenance mode toggled', {
+      adminUser: tenantContext.userId,
+      enabled
+    });
+    
+    res.success(maintenanceMode);
+  })
+);
+
+/**
+ * Organization Management
+ */
+
+/**
+ * @swagger
+ * /admin/organizations:
+ *   get:
+ *     tags:
+ *       - Admin Organizations
+ *     summary: List all organizations with statistics
+ *     description: Retrieves all organizations with usage statistics and activity data
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *       - name: offset
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *       - name: search
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Search by organization name or slug
+ *       - name: status
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [active, inactive, suspended]
+ */
+router.get('/organizations',
+  auditAdminOperation('view_organizations'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { limit = 50, offset = 0, search, status } = req.query;
+    
+    const result = await adminService.getAllOrganizations(
+      tenantContext,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10),
+      search as string,
+      status as 'active' | 'inactive' | 'suspended'
+    );
+    
+    logger.info('Admin: Organizations retrieved', {
+      adminUser: tenantContext.userId,
+      count: result.organizations.length,
+      total: result.total
+    });
+    
+    res.success({
+      organizations: result.organizations,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/organizations/{id}:
+ *   get:
+ *     tags:
+ *       - Admin Organizations
+ *     summary: Get organization details
+ *     description: Retrieves detailed information about a specific organization
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/organizations/:id',
+  auditAdminOperation('view_organization_details'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const organizationId = req.params.id;
+    
+    const organization = await adminService.getOrganizationDetails(tenantContext, organizationId);
+    
+    logger.info('Admin: Organization details retrieved', {
+      adminUser: tenantContext.userId,
+      organizationId: organization.id,
+      organizationName: organization.name
+    });
+    
+    res.success(organization);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/organizations/{id}/users:
+ *   get:
+ *     tags:
+ *       - Admin Organizations
+ *     summary: Get organization users
+ *     description: Retrieves all users belonging to a specific organization
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/organizations/:id/users',
+  auditAdminOperation('view_organization_users'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const organizationId = req.params.id;
+    const { limit = 50, offset = 0 } = req.query;
+    
+    const result = await adminService.getOrganizationUsers(
+      tenantContext,
+      organizationId,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+    
+    logger.info('Admin: Organization users retrieved', {
+      adminUser: tenantContext.userId,
+      organizationId,
+      count: result.users.length
+    });
+    
+    res.success({
+      users: result.users,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/organizations/{id}/activity:
+ *   get:
+ *     tags:
+ *       - Admin Organizations
+ *     summary: Get organization activity feed
+ *     description: Retrieves activity logs for a specific organization
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/organizations/:id/activity',
+  auditAdminOperation('view_organization_activity'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const organizationId = req.params.id;
+    const { limit = 50, offset = 0 } = req.query;
+    
+    const result = await adminService.getOrganizationActivity(
+      tenantContext,
+      organizationId,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+    
+    logger.info('Admin: Organization activity retrieved', {
+      adminUser: tenantContext.userId,
+      organizationId,
+      count: result.logs.length
+    });
+    
+    res.success({
+      logs: result.logs,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * User Management
+ */
+
+/**
+ * @swagger
+ * /admin/users:
+ *   get:
+ *     tags:
+ *       - Admin Users
+ *     summary: List all users with statistics
+ *     description: Retrieves all users across organizations with usage statistics
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *       - name: offset
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *       - name: search
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Search by email, name, or wallet address
+ *       - name: organizationId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by organization ID
+ *       - name: adminOnly
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *         description: Show only admin users
+ */
+router.get('/users',
+  auditAdminOperation('view_users'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { 
+      limit = 50, 
+      offset = 0, 
+      search, 
+      organizationId, 
+      adminOnly 
+    } = req.query;
+    
+    const result = await adminService.getAllUsers(
+      tenantContext,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10),
+      search as string,
+      organizationId as string,
+      adminOnly === 'true'
+    );
+    
+    logger.info('Admin: Users retrieved', {
+      adminUser: tenantContext.userId,
+      count: result.users.length,
+      total: result.total,
+      adminOnly: adminOnly === 'true'
+    });
+    
+    res.success({
+      users: result.users,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/users/{id}/admin-status:
+ *   put:
+ *     tags:
+ *       - Admin Users
+ *     summary: Update user admin status (super admin only)
+ *     description: Grant or revoke admin privileges for a user
+ *     security:
+ *       - bearerAuth: []
+ *       - superAdminAccess: []
+ */
+router.put('/users/:id/admin-status',
+  requireSuperAdmin,
+  auditAdminOperation('update_user_admin_status'),
+  validateRequest({
+    body: {
+      isAdmin: { type: 'boolean', required: true },
+      isSuperAdmin: { type: 'boolean', optional: true },
+      reason: { type: 'string', optional: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const userId = req.params.id;
+    
+    const updatedUser = await adminService.updateUserAdminStatus(
+      tenantContext,
+      userId,
+      req.body
+    );
+    
+    logger.info('Admin: User admin status updated', {
+      adminUser: tenantContext.userId,
+      targetUserId: updatedUser.id,
+      isAdmin: updatedUser.isAdmin,
+      isSuperAdmin: updatedUser.isSuperAdmin
+    });
+    
+    res.success(updatedUser);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/users/{id}/activity:
+ *   get:
+ *     tags:
+ *       - Admin Users
+ *     summary: Get user activity audit trail
+ *     description: Retrieves activity logs for a specific user
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/users/:id/activity',
+  auditAdminOperation('view_user_activity'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const userId = req.params.id;
+    const { limit = 50, offset = 0 } = req.query;
+    
+    const result = await adminService.getUserActivity(
+      tenantContext,
+      userId,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+    
+    logger.info('Admin: User activity retrieved', {
+      adminUser: tenantContext.userId,
+      targetUserId: userId,
+      count: result.logs.length
+    });
+    
+    res.success({
+      logs: result.logs,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * Template Management
+ */
+
+/**
+ * @swagger
+ * /admin/templates:
+ *   get:
+ *     tags:
+ *       - Admin Templates
+ *     summary: Get all system templates
+ *     description: Retrieves all system-wide templates with admin metadata
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/templates',
+  auditAdminOperation('view_system_templates'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    
+    const templates = await adminService.getAllSystemTemplates(tenantContext);
+    
+    logger.info('Admin: System templates retrieved', {
+      adminUser: tenantContext.userId,
+      count: templates.length
+    });
+    
+    res.success(templates);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/templates/{id}:
+ *   put:
+ *     tags:
+ *       - Admin Templates
+ *     summary: Update system template
+ *     description: Updates a system-wide template
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.put('/templates/:id',
+  auditAdminOperation('update_system_template'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const templateId = req.params.id;
+    
+    const updatedTemplate = await adminService.updateSystemTemplate(
+      tenantContext,
+      templateId,
+      req.body
+    );
+    
+    logger.info('Admin: System template updated', {
+      adminUser: tenantContext.userId,
+      templateId: updatedTemplate.id,
+      templateName: updatedTemplate.name
+    });
+    
+    res.success(updatedTemplate);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/templates/{id}/activate:
+ *   post:
+ *     tags:
+ *       - Admin Templates
+ *     summary: Toggle template activation status
+ *     description: Activate or deactivate a system template
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.post('/templates/:id/activate',
+  auditAdminOperation('toggle_template_status'),
+  validateRequest({
+    body: {
+      isActive: { type: 'boolean', required: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const templateId = req.params.id;
+    const { isActive } = req.body;
+    
+    const updatedTemplate = await adminService.toggleTemplateStatus(
+      tenantContext,
+      templateId,
+      isActive
+    );
+    
+    logger.info('Admin: Template status toggled', {
+      adminUser: tenantContext.userId,
+      templateId: updatedTemplate.id,
+      isActive: updatedTemplate.isActive
+    });
+    
+    res.success(updatedTemplate);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/templates/bulk-update:
+ *   post:
+ *     tags:
+ *       - Admin Templates
+ *     summary: Bulk template operations
+ *     description: Perform bulk operations on multiple templates
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.post('/templates/bulk-update',
+  auditAdminOperation('bulk_template_operation'),
+  validateRequest({
+    body: {
+      templateIds: { type: 'array', items: { type: 'string' }, required: true },
+      operation: { type: 'string', enum: ['activate', 'deactivate', 'delete'], required: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    
+    const results = await adminService.bulkTemplateOperation(tenantContext, req.body);
+    
+    logger.info('Admin: Bulk template operation completed', {
+      adminUser: tenantContext.userId,
+      operation: req.body.operation,
+      templateCount: req.body.templateIds.length,
+      success: results.success,
+      failed: results.failed
+    });
+    
+    res.success(results);
+  })
+);
+
+/**
+ * System Settings
+ */
+
+/**
+ * @swagger
+ * /admin/settings:
+ *   get:
+ *     tags:
+ *       - Admin Settings
+ *     summary: Get system settings
+ *     description: Retrieves system configuration settings
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ *     parameters:
+ *       - name: category
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by settings category
+ *       - name: publicOnly
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *         description: Show only public settings
+ */
+router.get('/settings',
+  auditAdminOperation('view_system_settings'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { category, publicOnly } = req.query;
+    
+    const settings = await adminService.getSystemSettings(
+      tenantContext,
+      category as string,
+      publicOnly === 'true'
+    );
+    
+    logger.info('Admin: System settings retrieved', {
+      adminUser: tenantContext.userId,
+      count: settings.length,
+      category
+    });
+    
+    res.success(settings);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/settings/{key}:
+ *   put:
+ *     tags:
+ *       - Admin Settings
+ *     summary: Update system setting (super admin only)
+ *     description: Updates a system configuration setting
+ *     security:
+ *       - bearerAuth: []
+ *       - superAdminAccess: []
+ */
+router.put('/settings/:key',
+  requireSuperAdmin,
+  auditAdminOperation('update_system_setting'),
+  validateRequest({
+    body: {
+      value: { required: true },
+      description: { type: 'string', optional: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const key = req.params.key;
+    
+    const updatedSetting = await adminService.updateSystemSetting(
+      tenantContext,
+      key,
+      req.body
+    );
+    
+    logger.info('Admin: System setting updated', {
+      adminUser: tenantContext.userId,
+      key: updatedSetting.key
+    });
+    
+    res.success(updatedSetting);
+  })
+);
+
+/**
+ * Activity Logs and Audit
+ */
+
+/**
+ * @swagger
+ * /admin/activity:
+ *   get:
+ *     tags:
+ *       - Admin Activity
+ *     summary: Get activity logs
+ *     description: Retrieves comprehensive system activity logs
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 200
+ *           default: 100
+ *       - name: offset
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *       - name: adminOnly
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *         description: Show only admin operations
+ *       - name: highRiskOnly
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *         description: Show only high-risk operations
+ *       - name: userId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by user ID
+ *       - name: organizationId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by organization ID
+ *       - name: action
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by action type
+ *       - name: tableName
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by table name
+ *       - name: severityLevel
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [low, medium, high, critical]
+ *         description: Filter by severity level
+ *       - name: startDate
+ *         in: query
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter from start date
+ *       - name: endDate
+ *         in: query
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter to end date
+ */
+router.get('/activity',
+  auditAdminOperation('view_activity_logs'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { 
+      limit = 100, 
+      offset = 0, 
+      adminOnly,
+      highRiskOnly,
+      userId,
+      organizationId,
+      action,
+      tableName,
+      severityLevel,
+      startDate,
+      endDate
+    } = req.query;
+    
+    const filters = {
+      adminOnly: adminOnly === 'true',
+      highRiskOnly: highRiskOnly === 'true',
+      userId: userId as string,
+      organizationId: organizationId as string,
+      action: action as string,
+      tableName: tableName as string,
+      severityLevel: severityLevel as string,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined
+    };
+    
+    const result = await adminService.getActivityLogs(
+      tenantContext,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10),
+      filters
+    );
+    
+    logger.info('Admin: Activity logs retrieved', {
+      adminUser: tenantContext.userId,
+      count: result.logs.length,
+      total: result.total,
+      filters
+    });
+    
+    res.success({
+      logs: result.logs,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
   })
 );
 

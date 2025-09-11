@@ -31,6 +31,16 @@ const createApiClient = (): AxiosInstance => {
       // Add timestamp
       config.headers['X-Request-Timestamp'] = new Date().toISOString();
 
+      // Debug logging for requests
+      if (config.debug?.enabled) {
+        console.log('API Request:', {
+          url: config.url,
+          method: config.method,
+          hasAuth: !!config.headers.Authorization,
+          baseURL: config.baseURL
+        });
+      }
+
       return config;
     },
     (error) => {
@@ -116,7 +126,18 @@ const generateRequestId = (): string => {
 
 const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return authStorage.getToken();
+  const token = authStorage.getToken();
+  
+  // Debug logging for authentication
+  if (process.env.NODE_ENV === 'development') {
+    console.log('API Client - Auth token exists:', !!token);
+    if (token) {
+      console.log('API Client - Token length:', token.length);
+      console.log('API Client - Token preview:', token.substring(0, 20) + '...');
+    }
+  }
+  
+  return token;
 };
 
 const handleAuthError = (): void => {

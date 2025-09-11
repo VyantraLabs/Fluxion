@@ -20,6 +20,7 @@ import { Template } from './Template';
 import { NotificationQueue } from './NotificationQueue';
 import { NotificationSettings } from './NotificationSettings';
 import { ReminderJob } from './ReminderJob';
+import { UserRole } from './UserRole';
 
 export type OrganizationPlan = 'basic' | 'professional' | 'enterprise';
 
@@ -85,6 +86,9 @@ export class Organization {
 
   @OneToMany(() => ReminderJob, reminder => reminder.organization, { cascade: true })
   reminderJobs!: ReminderJob[];
+
+  @OneToMany(() => UserRole, userRole => userRole.organization, { cascade: true })
+  userRoles!: UserRole[];
 
   // Computed properties
   get isActive(): boolean {

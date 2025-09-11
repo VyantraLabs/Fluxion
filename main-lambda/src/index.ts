@@ -18,6 +18,7 @@ import { setupSwagger } from '@/config/swagger';
 import { invoiceRoutes } from '@/modules/invoices/handlers';
 import { paymentRoutes } from '@/modules/payments/handlers';
 import { userRoutes } from '@/modules/users/handlers';
+import { organizationRoutes } from '@/modules/organizations/handlers';
 import { analyticsRoutes } from '@/modules/analytics/handlers';
 import { configRoutes } from '@/modules/config/handlers';
 import { templateRoutes } from '@/modules/templates/handlers';
@@ -143,6 +144,7 @@ app.use('/invoices', invoiceRoutes);
 app.use('/payments', paymentRoutes);
 app.use('/users', userRoutes); // Authentication endpoints (login, register)
 app.use('/user', userRoutes);  // Authenticated user endpoints (profile, stats)
+app.use('/organizations', organizationRoutes); // Organization management endpoints
 app.use('/templates', templateRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/config', configRoutes);

@@ -76,7 +76,7 @@ export class ConsolidateSystemOrganizations1757700000000 implements MigrationInt
           WHERE organization_id = '00000000-0000-0000-0000-000000000000'
         `);
         console.log(`  ✅ Updated ${table}`);
-      } catch (error) {
+      } catch (error: any) {
         console.log(`  ⚠️  Error updating ${table}: ${error.message}`);
       }
     }
@@ -207,7 +207,7 @@ export class ConsolidateSystemOrganizations1757700000000 implements MigrationInt
           SET organization_id = '00000000-0000-0000-0000-000000000000'
           WHERE organization_id = '010000000000000000000000'
         `);
-      } catch (error) {
+      } catch (error: any) {
         console.log(`⚠️  Warning reverting ${table}: ${error.message}`);
       }
     }

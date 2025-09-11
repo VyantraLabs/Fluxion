@@ -75,7 +75,9 @@ export const corsHandler = (req: Request, res: Response, next: NextFunction) => 
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
-    'http://localhost:3003'
+    'http://localhost:3003', // Admin frontend
+    'http://localhost:3004', // Normal frontend
+    'http://localhost:3005'  // Backend API
   ];
 
   const origin = req.headers.origin;
@@ -156,12 +158,32 @@ export const rateLimit = (options: {
 };
 
 /**
- * JWT authentication middleware
+ * JWT authentication middleware with comprehensive debugging
  */
 export const authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
+  const requestId = req.context?.requestId || 'unknown';
+  const method = req.method;
+  const path = req.path;
+  
+  logger.debug('JWT Authentication started', {
+    requestId,
+    method,
+    path,
+    hasAuthHeader: !!req.headers.authorization,
+    authHeaderLength: req.headers.authorization?.length || 0
+  });
+  
+  // Step 1: Extract Authorization header
   const authHeader = req.headers.authorization;
   
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader) {
+    logger.warn('JWT Authentication failed: Missing Authorization header', {
+      requestId,
+      method,
+      path,
+      headers: Object.keys(req.headers)
+    });
+    
     const response: APIResponse = {
       success: false,
       error: {
@@ -169,7 +191,32 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
         message: 'Authentication token required'
       },
       meta: {
-        requestId: req.context?.requestId || 'unknown',
+        requestId,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    res.status(401).json(response);
+    return;
+  }
+  
+  if (!authHeader.startsWith('Bearer ')) {
+    logger.warn('JWT Authentication failed: Invalid Authorization header format', {
+      requestId,
+      method,
+      path,
+      authHeaderStart: authHeader.substring(0, 20),
+      expectedFormat: 'Bearer <token>'
+    });
+    
+    const response: APIResponse = {
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Invalid authorization header format. Expected "Bearer <token>"'
+      },
+      meta: {
+        requestId,
         timestamp: new Date().toISOString()
       }
     };
@@ -178,11 +225,27 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
     return;
   }
 
+  // Step 2: Extract token
   const token = authHeader.substring(7);
+  
+  logger.debug('JWT token extracted', {
+    requestId,
+    tokenLength: token.length,
+    tokenStart: token.substring(0, 10) + '...',
+    tokenEnd: '...' + token.substring(token.length - 10)
+  });
+  
+  // Step 3: Check JWT secret
   const jwtSecret = process.env.JWT_SECRET;
 
   if (!jwtSecret) {
-    logger.error('JWT_SECRET not configured');
+    logger.error('JWT Authentication failed: JWT_SECRET not configured', {
+      requestId,
+      method,
+      path,
+      nodeEnv: process.env.NODE_ENV,
+      hasJwtSecret: false
+    });
     
     const response: APIResponse = {
       success: false,
@@ -191,7 +254,7 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
         message: 'Authentication system not properly configured'
       },
       meta: {
-        requestId: req.context?.requestId || 'unknown',
+        requestId,
         timestamp: new Date().toISOString()
       }
     };
@@ -199,33 +262,149 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
     res.status(500).json(response);
     return;
   }
+  
+  logger.debug('JWT secret available', {
+    requestId,
+    secretLength: jwtSecret.length,
+    hasSecret: true
+  });
 
+  // Step 4: Verify and decode JWT token
   try {
     const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
     
-    // Add user info to request context
-    if (req.context) {
-      (req.context as RequestContext).userId = decoded.user_id; // Always use the UUID user ID
-      (req.context as RequestContext).walletAddress = decoded.wallet_address;
-      (req.context as RequestContext).tenantId = decoded.tenant_id; // Add tenant ID to context
-    }
+    logger.debug('JWT token decoded successfully', {
+      requestId,
+      userId: decoded.user_id,
+      walletAddress: decoded.wallet_address,
+      tenantId: decoded.tenant_id,
+      role: decoded.role,
+      isAdmin: decoded.is_admin,
+      isSuperAdmin: decoded.is_super_admin,
+      isSystemUser: decoded.is_system_user,
+      systemRoles: decoded.system_roles,
+      issuedAt: decoded.iat,
+      expiresAt: decoded.exp,
+      currentTime: Math.floor(Date.now() / 1000)
+    });
+    
+    // Step 5: Validate token fields
+    if (!decoded.user_id) {
+      logger.warn('JWT Authentication failed: Missing user_id in token', {
+        requestId,
+        decodedKeys: Object.keys(decoded)
+      });
+      
+      const response: APIResponse = {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Invalid token: missing user information'
+        },
+        meta: {
+          requestId,
+          timestamp: new Date().toISOString()
+        }
+      };
 
-    logger.info('User authenticated', { 
-      wallet_address: decoded.wallet_address 
+      res.status(401).json(response);
+      return;
+    }
+    
+    if (!decoded.wallet_address) {
+      logger.warn('JWT Authentication failed: Missing wallet_address in token', {
+        requestId,
+        userId: decoded.user_id,
+        decodedKeys: Object.keys(decoded)
+      });
+      
+      const response: APIResponse = {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Invalid token: missing wallet information'
+        },
+        meta: {
+          requestId,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      res.status(401).json(response);
+      return;
+    }
+    
+    // Step 6: Add user info to request context
+    if (!req.context) {
+      logger.warn('Request context not initialized', { requestId });
+      req.context = {
+        requestId,
+        timestamp: new Date().toISOString(),
+        userAgent: req.headers['user-agent'],
+        ip: req.ip || req.connection.remoteAddress || 'unknown'
+      };
+    }
+    
+    // Set user context
+    (req.context as RequestContext).userId = decoded.user_id;
+    (req.context as RequestContext).walletAddress = decoded.wallet_address;
+    (req.context as RequestContext).tenantId = decoded.tenant_id;
+    (req.context as RequestContext).userRole = decoded.role;
+    (req.context as RequestContext).isAdmin = decoded.is_admin || false;
+    (req.context as RequestContext).isSuperAdmin = decoded.is_super_admin || false;
+    (req.context as RequestContext).isSystemUser = decoded.is_system_user || false;
+    (req.context as RequestContext).systemRoles = decoded.system_roles || [];
+
+    // Store JWT payload for system role middleware
+    (req as any).user = decoded;
+
+    logger.info('JWT Authentication successful', {
+      requestId,
+      method,
+      path,
+      userId: decoded.user_id,
+      walletAddress: decoded.wallet_address,
+      tenantId: decoded.tenant_id,
+      role: decoded.role,
+      isAdmin: decoded.is_admin || false,
+      contextSet: true
     });
 
     next();
+    
   } catch (error) {
-    logger.warn('Invalid JWT token', { error: error instanceof Error ? error.message : error });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : 'Unknown';
+    
+    logger.warn('JWT Authentication failed: Token verification error', {
+      requestId,
+      method,
+      path,
+      error: errorMessage,
+      errorName,
+      tokenLength: token.length,
+      secretLength: jwtSecret.length
+    });
+    
+    // Determine specific error type
+    let responseMessage = 'Invalid or expired authentication token';
+    
+    if (errorName === 'TokenExpiredError') {
+      responseMessage = 'Authentication token has expired. Please login again.';
+    } else if (errorName === 'JsonWebTokenError') {
+      responseMessage = 'Invalid authentication token format.';
+    } else if (errorName === 'NotBeforeError') {
+      responseMessage = 'Authentication token not active yet.';
+    }
     
     const response: APIResponse = {
       success: false,
       error: {
         code: 'UNAUTHORIZED',
-        message: 'Invalid or expired authentication token'
+        message: responseMessage
       },
       meta: {
-        requestId: req.context?.requestId || 'unknown',
+        requestId,
         timestamp: new Date().toISOString()
       }
     };
@@ -275,15 +454,55 @@ export const optionalAuth = (req: Request, _res: Response, next: NextFunction) =
 };
 
 /**
- * Global error handler
+ * Global error handler with comprehensive authentication error support
  */
 export const errorHandler = (error: any, req: Request, res: Response, _next: NextFunction) => {
-  logger.error('Unhandled error', { 
-    error: error.message,
-    stack: error.stack,
-    path: req.path,
-    method: req.method
-  });
+  const requestId = req.context?.requestId || 'unknown';
+  
+  // Log errors appropriately based on severity
+  if (isFluxionError(error)) {
+    if (error.statusCode >= 500) {
+      // Server errors - log with full stack trace
+      logger.error('Server error', { 
+        error: error.message,
+        error_code: error.code,
+        stack: error.stack,
+        path: req.path,
+        method: req.method,
+        request_id: requestId
+      });
+    } else if (error.statusCode === 401 || error.statusCode === 403) {
+      // Security errors - log but without stack trace
+      logger.warn('Security error', { 
+        error: error.message,
+        error_code: error.code,
+        path: req.path,
+        method: req.method,
+        ip: req.context?.ip,
+        user_agent: req.context?.userAgent,
+        request_id: requestId
+      });
+    } else {
+      // Client errors - minimal logging
+      logger.info('Client error', { 
+        error: error.message,
+        error_code: error.code,
+        path: req.path,
+        method: req.method,
+        request_id: requestId
+      });
+    }
+  } else {
+    // Unknown errors - log with full details
+    logger.error('Unhandled error', { 
+      error: error.message,
+      error_name: error.name,
+      stack: error.stack,
+      path: req.path,
+      method: req.method,
+      request_id: requestId
+    });
+  }
 
   let statusCode = 500;
   let errorCode = 'INTERNAL_ERROR';
@@ -295,8 +514,14 @@ export const errorHandler = (error: any, req: Request, res: Response, _next: Nex
     errorCode = error.code;
     message = error.message;
     details = error.details;
+    
+    // Sanitize error messages for client consumption
+    if (statusCode >= 500 && process.env.NODE_ENV === 'production') {
+      message = 'Internal server error';
+      details = undefined; // Don't expose internal details in production
+    }
   } else if (error instanceof ZodError) {
-    statusCode = 400;
+    statusCode = 422; // Use 422 for validation errors instead of 400
     errorCode = 'VALIDATION_ERROR';
     message = 'Invalid request data';
     details = error.errors.map(err => ({
@@ -304,8 +529,18 @@ export const errorHandler = (error: any, req: Request, res: Response, _next: Nex
       message: err.message,
       code: err.code
     }));
+  } else if (error instanceof SyntaxError && 'body' in error) {
+    // JSON parsing errors
+    statusCode = 400;
+    errorCode = 'INVALID_JSON';
+    message = 'Invalid JSON in request body';
   } else if (error instanceof Error) {
-    message = error.message;
+    // Generic errors
+    if (process.env.NODE_ENV === 'production') {
+      message = 'An unexpected error occurred';
+    } else {
+      message = error.message;
+    }
   }
 
   const response: APIResponse = {
@@ -313,13 +548,25 @@ export const errorHandler = (error: any, req: Request, res: Response, _next: Nex
     error: {
       code: errorCode,
       message,
-      details
+      ...(details && { details }),
+      ...(process.env.NODE_ENV !== 'production' && error.stack && { 
+        stack: error.stack.split('\n').slice(0, 10) // Limit stack trace in development
+      })
     },
     meta: {
-      requestId: req.context?.requestId || 'unknown',
-      timestamp: new Date().toISOString()
+      requestId,
+      timestamp: new Date().toISOString(),
+      ...(process.env.NODE_ENV !== 'production' && {
+        path: req.path,
+        method: req.method
+      })
     }
   };
+
+  // Security headers for authentication errors
+  if (statusCode === 401) {
+    res.setHeader('WWW-Authenticate', 'Bearer');
+  }
 
   res.status(statusCode).json(response);
 };
@@ -530,6 +777,35 @@ export const adminOnly = async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
+    // Check admin privileges from JWT token first (faster and more reliable)
+    const context = req.context as RequestContext & { isAdmin?: boolean; isSuperAdmin?: boolean };
+    const hasAdminFromJWT = context?.isAdmin === true || context?.isSuperAdmin === true;
+    
+    logger.debug('Admin access check via JWT', {
+      userId: req.context.userId,
+      path: req.path,
+      isAdmin: context?.isAdmin,
+      isSuperAdmin: context?.isSuperAdmin,
+      hasAdminFromJWT
+    });
+
+    if (hasAdminFromJWT) {
+      logger.info('Admin access granted via JWT token', {
+        userId: req.context.userId,
+        path: req.path,
+        isAdmin: context?.isAdmin,
+        isSuperAdmin: context?.isSuperAdmin
+      });
+      next();
+      return;
+    }
+    
+    // Fallback to RBAC system for backward compatibility
+    logger.debug('JWT admin check failed, falling back to RBAC validation', {
+      userId: req.context.userId,
+      path: req.path
+    });
+
     // Import admin service to validate admin access
     const { AdminService } = await import('@/modules/admin/service');
     const adminService = new AdminService();
@@ -538,12 +814,15 @@ export const adminOnly = async (req: Request, res: Response, next: NextFunction)
     const { getTenantContext } = await import('@/shared/middleware/tenant');
     const tenantContext = getTenantContext(req);
     
-    const isAdmin = await adminService.validateAdminAccess(tenantContext);
+    const isAdminViaRBAC = await adminService.validateAdminAccess(tenantContext);
     
-    if (!isAdmin) {
+    if (!isAdminViaRBAC) {
       logger.warn('Non-admin user attempted to access admin endpoint', {
         userId: req.context.userId,
-        path: req.path
+        path: req.path,
+        jwt_isAdmin: context?.isAdmin,
+        jwt_isSuperAdmin: context?.isSuperAdmin,
+        rbac_result: false
       });
       
       const response: APIResponse = {
@@ -562,7 +841,7 @@ export const adminOnly = async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    logger.info('Admin access granted', {
+    logger.info('Admin access granted via RBAC', {
       userId: req.context.userId,
       path: req.path
     });
@@ -600,6 +879,15 @@ setInterval(() => {
     }
   }
 }, 60000); // Clean up every minute
+
+// Export system role middleware
+export { 
+  requireSystemRole, 
+  requireSystemSuperAdmin, 
+  requireSystemAdmin, 
+  requireSystemUser, 
+  rejectOrganizationAdmins 
+} from './system-role';
 
 // Extend Express Response types
 declare global {

@@ -7,7 +7,7 @@ export class FixS3UrlsToSystemStructure1757410785767 implements MigrationInterfa
     console.log('🔧 Fixing S3 URLs to use proper /templates/system/[category]/ structure...');
     
     // Update all S3 template URLs to include 'system' directory
-    const updateResult = await queryRunner.query(`
+    await queryRunner.query(`
       UPDATE templates 
       SET s3_template_url = REPLACE(s3_template_url, 'templates/', 'templates/system/')
       WHERE organization_id = '010000000000000000000000'

@@ -2,7 +2,7 @@
 export const config = {
   // API Configuration
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005',
     version: process.env.NEXT_PUBLIC_API_VERSION || 'v1',
     timeout: 30000, // 30 seconds
   },

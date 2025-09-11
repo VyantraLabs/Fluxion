@@ -457,6 +457,34 @@ export abstract class BaseRepository<T extends { id: string; organizationId?: st
   }
 
   /**
+   * Save entity
+   */
+  async save(entity: T): Promise<T> {
+    try {
+      const savedEntity = await this.repository.save(entity);
+      
+      this.logger.debug('Entity saved', { 
+        entityName: this.entityName, 
+        id: savedEntity.id,
+      });
+      
+      return savedEntity;
+    } catch (error: any) {
+      this.logger.error('Failed to save entity', { 
+        error: error.message, 
+        entityName: this.entityName,
+        id: (entity as any).id,
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to save ${this.entityName}`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
    * Create query builder
    */
   createQueryBuilder(alias?: string) {
@@ -489,6 +517,309 @@ export abstract class BaseRepository<T extends { id: string; organizationId?: st
       throw new FluxionError(
         ErrorCodes.DATABASE_ERROR,
         `Failed to count ${this.entityName} records`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Execute raw SQL query
+   */
+  async query(sql: string, parameters?: any[]): Promise<any> {
+    try {
+      const result = await this.repository.query(sql, parameters);
+      this.logger.debug('Raw query executed', {
+        entityName: this.entityName,
+        sql: sql.substring(0, 100) + (sql.length > 100 ? '...' : ''),
+        paramCount: parameters?.length || 0
+      });
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to execute raw query', {
+        error: error.message,
+        entityName: this.entityName,
+        sql: sql.substring(0, 100)
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to execute query for ${this.entityName}`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find entity by ID without tenant context (for public access)
+   */
+  async findByIdWithoutTenant(id: string): Promise<T | null> {
+    try {
+      const entity = await this.repository.findOne({ where: { id } as FindOptionsWhere<T> });
+      
+      if (entity) {
+        this.logger.debug('Entity found by ID (no tenant)', { 
+          entityName: this.entityName, 
+          id
+        });
+      }
+      
+      return entity;
+    } catch (error: any) {
+      this.logger.error('Failed to find entity by ID (no tenant)', { 
+        error: error.message, 
+        entityName: this.entityName, 
+        id
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to find ${this.entityName}`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Perform transaction
+   */
+  async transaction<R>(fn: (repository: Repository<T>) => Promise<R>): Promise<R> {
+    try {
+      return await this.repository.manager.transaction(async (entityManager) => {
+        const transactionalRepository = entityManager.getRepository(this.repository.target);
+        return await fn(transactionalRepository);
+      });
+    } catch (error: any) {
+      this.logger.error('Transaction failed', {
+        error: error.message,
+        entityName: this.entityName
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Transaction failed for ${this.entityName}`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find entities with joins
+   */
+  async findWithRelations(
+    tenantContext: TenantContext,
+    relations: string[],
+    where?: FindOptionsWhere<T>,
+    options?: Omit<FindManyOptions<T>, 'relations' | 'where'>
+  ): Promise<T[]> {
+    await this.setTenantContext(tenantContext);
+    
+    try {
+      const whereCondition = { ...where } as FindOptionsWhere<T>;
+      
+      // Add tenant filter for multi-tenant entities
+      if (this.isMultiTenant()) {
+        (whereCondition as any).organizationId = tenantContext.tenantId;
+      }
+
+      const entities = await this.repository.find({
+        ...options,
+        where: whereCondition,
+        relations
+      });
+      
+      this.logger.debug('Entities with relations found', { 
+        entityName: this.entityName, 
+        count: entities.length,
+        relations,
+        tenantId: tenantContext.tenantId
+      });
+      
+      return entities;
+    } catch (error: any) {
+      this.logger.error('Failed to find entities with relations', { 
+        error: error.message, 
+        entityName: this.entityName,
+        relations,
+        tenantId: tenantContext.tenantId
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to find ${this.entityName} with relations`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Soft delete entity
+   */
+  async softDelete(tenantContext: TenantContext, id: string): Promise<void> {
+    await this.setTenantContext(tenantContext);
+    
+    try {
+      // First, verify entity exists and belongs to tenant
+      const entity = await this.findById(tenantContext, id);
+      if (!entity) {
+        throw new FluxionError(
+          ErrorCodes.NOT_FOUND,
+          `${this.entityName} not found`,
+          404
+        );
+      }
+
+      await this.repository.softDelete(id);
+      
+      this.logger.info('Entity soft deleted', { 
+        entityName: this.entityName, 
+        id,
+        tenantId: tenantContext.tenantId
+      });
+    } catch (error: any) {
+      if (error instanceof FluxionError) {
+        throw error;
+      }
+      
+      this.logger.error('Failed to soft delete entity', { 
+        error: error.message, 
+        entityName: this.entityName, 
+        id,
+        tenantId: tenantContext.tenantId
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to soft delete ${this.entityName}`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Bulk create entities
+   */
+  async bulkCreate(tenantContext: TenantContext, dataArray: DeepPartial<T>[]): Promise<T[]> {
+    await this.setTenantContext(tenantContext);
+    
+    try {
+      // Add organization ID and ULIDs to all entities
+      const entities = dataArray.map(data => {
+        return {
+          ...data,
+          ...(this.isMultiTenant() && { organizationId: tenantContext.tenantId }),
+          ...(!data.id && { id: ulid() }),
+        } as DeepPartial<T>;
+      });
+
+      const createdEntities = this.repository.create(entities);
+      const savedEntities = await this.repository.save(createdEntities);
+      
+      this.logger.info('Entities bulk created', { 
+        entityName: this.entityName, 
+        count: savedEntities.length,
+        tenantId: tenantContext.tenantId
+      });
+      
+      return savedEntities;
+    } catch (error: any) {
+      this.logger.error('Failed to bulk create entities', { 
+        error: error.message, 
+        entityName: this.entityName,
+        count: dataArray.length,
+        tenantId: tenantContext.tenantId
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to bulk create ${this.entityName} records`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Bulk update entities
+   */
+  async bulkUpdate(
+    tenantContext: TenantContext,
+    where: FindOptionsWhere<T>,
+    updates: Partial<T>
+  ): Promise<void> {
+    await this.setTenantContext(tenantContext);
+    
+    try {
+      // Add tenant filter for multi-tenant entities
+      if (this.isMultiTenant()) {
+        (where as any).organizationId = tenantContext.tenantId;
+      }
+
+      // Remove organization ID from updates to prevent tampering
+      const { organizationId, ...safeUpdates } = updates as any;
+      
+      const result = await this.repository.update(where, safeUpdates);
+      
+      this.logger.info('Entities bulk updated', { 
+        entityName: this.entityName, 
+        affected: result.affected,
+        tenantId: tenantContext.tenantId
+      });
+    } catch (error: any) {
+      this.logger.error('Failed to bulk update entities', { 
+        error: error.message, 
+        entityName: this.entityName,
+        tenantId: tenantContext.tenantId
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to bulk update ${this.entityName} records`,
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find entities with custom query builder operations
+   */
+  async findWithQueryBuilder(
+    tenantContext: TenantContext,
+    builderFn: (qb: any) => any,
+    alias?: string
+  ): Promise<T[]> {
+    await this.setTenantContext(tenantContext);
+    
+    try {
+      let queryBuilder = this.repository.createQueryBuilder(alias || this.entityName.toLowerCase());
+      
+      // Add tenant filter for multi-tenant entities
+      if (this.isMultiTenant()) {
+        queryBuilder = queryBuilder.where(`${alias || this.entityName.toLowerCase()}.organizationId = :organizationId`, {
+          organizationId: tenantContext.tenantId
+        });
+      }
+      
+      // Apply custom query builder operations
+      queryBuilder = builderFn(queryBuilder);
+      
+      const entities = await queryBuilder.getMany();
+      
+      this.logger.debug('Entities found with query builder', { 
+        entityName: this.entityName, 
+        count: entities.length,
+        tenantId: tenantContext.tenantId
+      });
+      
+      return entities;
+    } catch (error: any) {
+      this.logger.error('Failed to find entities with query builder', { 
+        error: error.message, 
+        entityName: this.entityName,
+        tenantId: tenantContext.tenantId
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        `Failed to query ${this.entityName} records`,
         500,
         error
       );

@@ -55,6 +55,16 @@ export class AuditLog {
   @Column({ name: 'user_agent', type: 'text', nullable: true })
   userAgent?: string;
 
+  // Admin tracking fields
+  @Column({ name: 'admin_action', type: 'boolean', default: false })
+  adminAction!: boolean;
+
+  @Column({ name: 'admin_user_id', type: 'varchar', length: 255, nullable: true })
+  adminUserId?: string;
+
+  @Column({ name: 'severity_level', type: 'varchar', length: 20, default: 'low' })
+  severityLevel!: 'low' | 'medium' | 'high' | 'critical';
+
   @Column({ type: 'jsonb', default: {}, nullable: false })
   metadata!: {
     endpoint?: string;
@@ -123,8 +133,11 @@ export class AuditLog {
     const highRiskTables = ['users', 'organization_settings', 'audit_logs'];
     
     return (
+      this.adminAction ||
       highRiskActions.includes(this.action) ||
       highRiskTables.includes(this.tableName) ||
+      this.severityLevel === 'high' ||
+      this.severityLevel === 'critical' ||
       this.metadata?.severity === 'high' ||
       this.metadata?.severity === 'critical'
     );
@@ -267,10 +280,68 @@ export class AuditLog {
       tableName,
       recordId: organizationId, // Use organization ID as record ID for exports
       action: 'EXPORT',
+      severityLevel: 'medium',
       metadata: {
         ...metadata,
         recordCount,
         severity: 'medium',
+      },
+    };
+  }
+
+  static createForAdminAction(
+    organizationId: string,
+    adminUserId: string,
+    targetUserId: string | undefined,
+    tableName: string,
+    recordId: string,
+    action: AuditAction,
+    severityLevel: 'low' | 'medium' | 'high' | 'critical' = 'medium',
+    oldValues?: any,
+    newValues?: any,
+    metadata?: any
+  ): Partial<AuditLog> {
+    return {
+      organizationId,
+      userId: targetUserId,
+      tableName,
+      recordId,
+      action,
+      adminAction: true,
+      adminUserId,
+      severityLevel,
+      oldValues,
+      newValues,
+      metadata: {
+        ...metadata,
+        adminOperation: true,
+        severity: severityLevel,
+      },
+    };
+  }
+
+  static createForSystemOperation(
+    adminUserId: string,
+    operation: string,
+    details: any,
+    severityLevel: 'low' | 'medium' | 'high' | 'critical' = 'high',
+    metadata?: any
+  ): Partial<AuditLog> {
+    return {
+      organizationId: 'system', // Special organization ID for system operations
+      userId: adminUserId,
+      tableName: 'system_operations',
+      recordId: operation,
+      action: 'UPDATE',
+      adminAction: true,
+      adminUserId,
+      severityLevel,
+      newValues: details,
+      metadata: {
+        ...metadata,
+        systemOperation: true,
+        operation,
+        severity: severityLevel,
       },
     };
   }
