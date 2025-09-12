@@ -62,15 +62,17 @@ export function SystemRoleGuard({
 
   // Check specific role requirements (if any specified)
   if (rolesToCheck.length > 0) {
-    const hasRequiredRole = rolesToCheck.some(role => systemRoles.includes(role))
+    // Handle both array format and null/undefined
+    const userRolesList = systemRoles || []
+    const hasRequiredRole = rolesToCheck.some(role => userRolesList.includes(role))
     
     if (!hasRequiredRole) {
       console.log('❌ SystemRoleGuard: User lacks required role:', {
-        userRoles: systemRoles,
+        userRoles: userRolesList,
         requiredRoles: rolesToCheck
       })
       if (showError) {
-        return <SystemAccessDenied reason="insufficient_role" requiredRoles={rolesToCheck} userRoles={systemRoles} />
+        return <SystemAccessDenied reason="insufficient_role" requiredRoles={rolesToCheck} userRoles={userRolesList} />
       }
       if (typeof window !== 'undefined') {
         router.push(fallbackUrl)
@@ -80,7 +82,7 @@ export function SystemRoleGuard({
   }
 
   console.log('✅ SystemRoleGuard: Access granted', {
-    userRoles: systemRoles,
+    userRoles: systemRoles || [],
     requiredRoles: rolesToCheck.length > 0 ? rolesToCheck : 'any system role'
   })
 

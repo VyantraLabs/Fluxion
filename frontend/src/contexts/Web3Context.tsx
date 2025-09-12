@@ -1,18 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import {
-  Web3State,
-  Web3Actions,
   WalletInfo,
   WalletProvider,
   WalletErrorInfo,
   WalletError,
   WalletAddress,
-  TransactionRequest,
-  TransactionHash,
-  TokenBalance,
 } from '@/types/web3';
 import {
   isMetaMaskInstalled,
@@ -20,76 +15,34 @@ import {
   getCurrentChainId,
   switchNetwork,
   signMessage,
-  sendUSDCTransfer,
   getWalletBalance,
-  getUSDCBalance,
   createBrowserProvider,
 } from '@/utils/web3';
-import { config } from '@/utils/config';
 import { walletStorage } from '@/utils/storage';
-import { useConfig, useDefaultNetwork } from './ConfigContext';
 import toast from 'react-hot-toast';
 
-// Initial state
-const initialState: Web3State = {
-  wallet: null,
-  isConnecting: false,
-  error: null,
-  chainId: null,
-  provider: null,
-  signer: null,
-};
+interface Web3ContextType {
+  wallet: WalletInfo | null;
+  isConnecting: boolean;
+  error: WalletErrorInfo | null;
+  chainId: number | null;
+  provider: ethers.BrowserProvider | null;
+  signer: ethers.JsonRpcSigner | null;
+  connect: (provider?: WalletProvider) => Promise<WalletInfo>;
+  disconnect: () => void;
+  switchNetwork: (chainId: number) => Promise<void>;
+  signMessage: (message: string) => Promise<string>;
+}
 
-// Action types
-type Web3Action =
-  | { type: 'SET_CONNECTING'; payload: boolean }
-  | { type: 'SET_WALLET'; payload: WalletInfo }
-  | { type: 'SET_ERROR'; payload: WalletErrorInfo | null }
-  | { type: 'SET_CHAIN_ID'; payload: number }
-  | { type: 'SET_PROVIDER'; payload: ethers.BrowserProvider | null }
-  | { type: 'SET_SIGNER'; payload: ethers.JsonRpcSigner | null }
-  | { type: 'RESET' };
+const Web3Context = createContext<Web3ContextType | null>(null);
 
-// Reducer
-const web3Reducer = (state: Web3State, action: Web3Action): Web3State => {
-  switch (action.type) {
-    case 'SET_CONNECTING':
-      return { ...state, isConnecting: action.payload, error: null };
-    
-    case 'SET_WALLET':
-      return { ...state, wallet: action.payload, isConnecting: false, error: null };
-    
-    case 'SET_ERROR':
-      return { ...state, error: action.payload, isConnecting: false };
-    
-    case 'SET_CHAIN_ID':
-      return { ...state, chainId: action.payload };
-    
-    case 'SET_PROVIDER':
-      return { ...state, provider: action.payload };
-    
-    case 'SET_SIGNER':
-      return { ...state, signer: action.payload };
-    
-    case 'RESET':
-      return initialState;
-    
-    default:
-      return state;
-  }
-};
-
-// Context
-const Web3Context = createContext<{
-  state: Web3State;
-  actions: Web3Actions;
-} | null>(null);
-
-// Provider component
 export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(web3Reducer, initialState);
-  const { config: dynamicConfig, isNetworkSupported } = useConfig();
-  const defaultNetwork = useDefaultNetwork();
+  const [wallet, setWallet] = useState<WalletInfo | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<WalletErrorInfo | null>(null);
+  const [chainId, setChainId] = useState<number | null>(null);
+  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
+  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
 
   // Initialize wallet connection on page load
   useEffect(() => {
@@ -99,204 +52,207 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children
   // Listen for wallet events
   useEffect(() => {
     if (typeof window !== 'undefined' && window.ethereum) {
-      const handleAccountsChangedWithCleanup = (accounts: string[]) => {
-        try {
-          handleAccountsChanged(accounts);
-        } catch (error) {
-          console.error('Error handling accounts changed:', error);
+      const handleAccountsChanged = (accounts: string[]) => {
+        console.log('Accounts changed:', accounts);
+        if (accounts.length === 0) {
+          disconnect();
+        } else if (accounts[0] !== wallet?.address) {
+          initializeWallet();
         }
       };
 
-      const handleChainChangedWithCleanup = (chainId: string) => {
-        try {
-          handleChainChanged(chainId);
-        } catch (error) {
-          console.error('Error handling chain changed:', error);
+      const handleChainChanged = (newChainId: string) => {
+        const chainIdNum = parseInt(newChainId, 16);
+        console.log('Chain changed:', chainIdNum);
+        setChainId(chainIdNum);
+        if (wallet) {
+          setWallet({ ...wallet, chainId: chainIdNum });
         }
       };
 
-      const handleDisconnectWithCleanup = () => {
-        try {
-          handleDisconnect();
-        } catch (error) {
-          console.error('Error handling disconnect:', error);
-        }
+      const handleDisconnect = () => {
+        console.log('Wallet disconnected');
+        disconnect();
       };
 
-      window.ethereum.on('accountsChanged', handleAccountsChangedWithCleanup);
-      window.ethereum.on('chainChanged', handleChainChangedWithCleanup);
-      window.ethereum.on('disconnect', handleDisconnectWithCleanup);
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+      window.ethereum.on('disconnect', handleDisconnect);
 
       return () => {
-        try {
-          window.ethereum?.removeListener('accountsChanged', handleAccountsChangedWithCleanup);
-          window.ethereum?.removeListener('chainChanged', handleChainChangedWithCleanup);
-          window.ethereum?.removeListener('disconnect', handleDisconnectWithCleanup);
-        } catch (error) {
-          console.warn('Error removing event listeners:', error);
-        }
+        window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum?.removeListener('chainChanged', handleChainChanged);
+        window.ethereum?.removeListener('disconnect', handleDisconnect);
       };
     }
-  }, []);
+  }, [wallet]);
 
   const initializeWallet = async () => {
     try {
       if (!isMetaMaskInstalled()) {
-        console.debug('MetaMask not installed, skipping wallet initialization');
+        console.debug('MetaMask not installed');
         return;
       }
 
-      const provider = createBrowserProvider();
-      if (!provider) {
-        console.debug('No browser provider available, skipping wallet initialization');
+      const browserProvider = createBrowserProvider();
+      if (!browserProvider) {
+        console.debug('No browser provider available');
         return;
       }
 
-      dispatch({ type: 'SET_PROVIDER', payload: provider });
+      setProvider(browserProvider);
 
       // Check if already connected
-      const accounts = await provider.listAccounts();
+      const accounts = await browserProvider.listAccounts();
       if (accounts.length > 0) {
-        const signer = await provider.getSigner();
-        const address = await signer.getAddress() as WalletAddress;
-        const chainId = await getCurrentChainId();
+        const walletSigner = await browserProvider.getSigner();
+        const address = await walletSigner.getAddress() as WalletAddress;
+        const walletChainId = await getCurrentChainId();
 
-        dispatch({ type: 'SET_SIGNER', payload: signer });
-        dispatch({ type: 'SET_CHAIN_ID', payload: chainId });
+        setSigner(walletSigner);
+        setChainId(walletChainId);
 
-        const wallet: WalletInfo = {
+        const walletInfo: WalletInfo = {
           address,
-          chainId,
+          chainId: walletChainId,
           provider: 'metamask',
           isConnected: true,
         };
 
-        dispatch({ type: 'SET_WALLET', payload: wallet });
+        setWallet(walletInfo);
         walletStorage.setAddress(address);
-        walletStorage.setPreferredNetwork(chainId);
+        walletStorage.setPreferredNetwork(walletChainId);
 
-        // Get balance with better error handling
+        // Get balance
         try {
-          const balance = await getWalletBalance(address, chainId);
-          wallet.balance = balance;
-          dispatch({ type: 'SET_WALLET', payload: wallet });
+          const balance = await getWalletBalance(address, walletChainId);
+          walletInfo.balance = balance;
+          setWallet(walletInfo);
         } catch (balanceError) {
-          console.warn('Could not fetch wallet balance during initialization:', balanceError);
-          // Continue without balance - it's not critical for functionality
+          console.warn('Could not fetch wallet balance:', balanceError);
         }
-      } else {
-        console.debug('No connected accounts found during initialization');
       }
     } catch (error: any) {
       console.error('Error initializing wallet:', error);
-      // Don't dispatch error for initialization failures as they're often expected
-      // (user hasn't connected yet, etc.)
     }
   };
 
-  const connect = async (provider: WalletProvider = 'metamask'): Promise<void> => {
-    if (provider !== 'metamask') {
+  const connect = async (walletProvider: WalletProvider = 'metamask'): Promise<WalletInfo> => {
+    if (walletProvider !== 'metamask') {
       throw new WalletErrorInfo({
         code: WalletError.UNSUPPORTED_METHOD,
         message: 'Only MetaMask is supported in this version',
       });
     }
 
-    if (!isMetaMaskInstalled()) {
+    if (typeof window.ethereum === 'undefined') {
       throw new WalletErrorInfo({
         code: WalletError.UNKNOWN_ERROR,
         message: 'MetaMask is not installed. Please install MetaMask to continue.',
       });
     }
 
-    dispatch({ type: 'SET_CONNECTING', payload: true });
+    setIsConnecting(true);
+    setError(null);
 
     try {
-      const accounts = await requestWalletConnection();
+      console.log('🔄 Web3: Requesting account access...');
       
-      if (accounts.length === 0) {
+      // Check if already connected first
+      let accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      
+      if (!accounts || accounts.length === 0) {
+        // Request account access if not connected
+        console.log('🔄 Web3: Not connected, requesting access...');
+        
+        // Add a small delay to ensure MetaMask is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      }
+      
+      if (!accounts || accounts.length === 0) {
         throw new WalletErrorInfo({
-          code: WalletError.UNAUTHORIZED,
+          code: WalletError.UNKNOWN_ERROR,
           message: 'No accounts found',
         });
       }
 
-      const browserProvider = createBrowserProvider();
-      if (!browserProvider) {
-        throw new WalletErrorInfo({
-          code: WalletError.UNKNOWN_ERROR,
-          message: 'Could not create wallet provider',
-        });
-      }
+      console.log('🔄 Web3: Creating provider...');
+      const browserProvider = new ethers.BrowserProvider(window.ethereum);
+      setProvider(browserProvider);
 
-      dispatch({ type: 'SET_PROVIDER', payload: browserProvider });
+      const walletSigner = await browserProvider.getSigner();
+      const address = await walletSigner.getAddress() as WalletAddress;
+      const network = await browserProvider.getNetwork();
+      const walletChainId = Number(network.chainId);
 
-      const signer = await browserProvider.getSigner();
-      const address = await signer.getAddress() as WalletAddress;
-      const chainId = await getCurrentChainId();
+      console.log('✅ Web3: Wallet connected:', { address, chainId: walletChainId });
 
-      dispatch({ type: 'SET_SIGNER', payload: signer });
-      dispatch({ type: 'SET_CHAIN_ID', payload: chainId });
+      setSigner(walletSigner);
+      setChainId(walletChainId);
 
-      const wallet: WalletInfo = {
+      const walletInfo: WalletInfo = {
         address,
-        chainId,
+        chainId: walletChainId,
         provider: 'metamask',
         isConnected: true,
       };
 
-      // Check if on correct network using dynamic config
-      const correctNetworkId = dynamicConfig?.isLoaded ? defaultNetwork : config.blockchain.defaultChainId;
-      const networkSupported = dynamicConfig?.isLoaded ? isNetworkSupported(chainId) : chainId === config.blockchain.defaultChainId;
-
-      if (!networkSupported) {
-        const networkName = dynamicConfig?.networks?.find(n => n.chainId === correctNetworkId)?.name || `Chain ID ${correctNetworkId}`;
-        toast.error(`Please switch to ${networkName}`);
-        try {
-          await switchNetwork(correctNetworkId);
-        } catch (switchError) {
-          console.warn('Could not switch network automatically:', switchError);
-          // Don't throw error for automatic network switching failures
-        }
-      }
-
-      dispatch({ type: 'SET_WALLET', payload: wallet });
+      setWallet(walletInfo);
       walletStorage.setAddress(address);
-      walletStorage.setPreferredNetwork(chainId);
+      walletStorage.setPreferredNetwork(walletChainId);
 
-      // Get balance
+      // Get balance (non-blocking)
       try {
-        const balance = await getWalletBalance(address, chainId);
-        wallet.balance = balance;
-        dispatch({ type: 'SET_WALLET', payload: wallet });
+        const balance = await getWalletBalance(address, walletChainId);
+        walletInfo.balance = balance;
+        setWallet({ ...walletInfo });
       } catch (error) {
         console.warn('Could not fetch wallet balance:', error);
       }
 
+      setIsConnecting(false);
       toast.success('Wallet connected successfully!');
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      dispatch({ type: 'SET_ERROR', payload: error as WalletErrorInfo });
+      
+      return walletInfo;
+    } catch (error: any) {
+      console.error('❌ Web3: Error connecting wallet:', error);
+      setError(error as WalletErrorInfo);
+      setIsConnecting(false);
+      
+      // Handle user rejection specifically
+      if (error.code === 4001 || error.message?.includes('User rejected')) {
+        const userRejectedError = new WalletErrorInfo({
+          code: WalletError.USER_REJECTED_REQUEST,
+          message: 'Connection cancelled by user',
+        });
+        throw userRejectedError;
+      }
+      
       throw error;
     }
   };
 
   const disconnect = useCallback(() => {
-    dispatch({ type: 'RESET' });
+    setWallet(null);
+    setIsConnecting(false);
+    setError(null);
+    setChainId(null);
+    setProvider(null);
+    setSigner(null);
     walletStorage.removeAddress();
     toast.success('Wallet disconnected');
   }, []);
 
-  const switchNetworkHandler = async (chainId: number): Promise<void> => {
+  const switchNetworkHandler = async (newChainId: number): Promise<void> => {
     try {
-      await switchNetwork(chainId);
-      dispatch({ type: 'SET_CHAIN_ID', payload: chainId });
-      walletStorage.setPreferredNetwork(chainId);
+      await switchNetwork(newChainId);
+      setChainId(newChainId);
+      walletStorage.setPreferredNetwork(newChainId);
       
-      // Update wallet info with new chain
-      if (state.wallet) {
-        const updatedWallet = { ...state.wallet, chainId };
-        dispatch({ type: 'SET_WALLET', payload: updatedWallet });
+      if (wallet) {
+        setWallet({ ...wallet, chainId: newChainId });
       }
 
       toast.success('Network switched successfully');
@@ -307,7 +263,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signMessageHandler = async (message: string): Promise<string> => {
-    if (!state.wallet || !state.signer) {
+    if (!wallet || !signer) {
       throw new WalletErrorInfo({
         code: WalletError.DISCONNECTED,
         message: 'Wallet not connected',
@@ -315,98 +271,33 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      return await signMessage(message, state.wallet.address);
+      return await signMessage(message, wallet.address);
     } catch (error) {
       console.error('Error signing message:', error);
       throw error;
     }
   };
 
-  const sendTransaction = async (transaction: TransactionRequest): Promise<TransactionHash> => {
-    if (!state.signer) {
-      throw new WalletErrorInfo({
-        code: WalletError.DISCONNECTED,
-        message: 'Wallet not connected',
-      });
-    }
-
-    try {
-      const tx = await state.signer.sendTransaction(transaction);
-      return tx.hash as TransactionHash;
-    } catch (error) {
-      console.error('Error sending transaction:', error);
-      throw error;
-    }
-  };
-
-  const getBalance = async (address?: WalletAddress): Promise<string> => {
-    const targetAddress = address || state.wallet?.address;
-    if (!targetAddress) {
-      throw new Error('No wallet address provided');
-    }
-
-    return await getWalletBalance(targetAddress, state.chainId || undefined);
-  };
-
-  const getTokenBalance = async (
-    tokenAddress: string, 
-    address?: WalletAddress
-  ): Promise<TokenBalance> => {
-    const targetAddress = address || state.wallet?.address;
-    if (!targetAddress) {
-      throw new Error('No wallet address provided');
-    }
-
-    return await getUSDCBalance(targetAddress, state.chainId || undefined);
-  };
-
-  const handleAccountsChanged = useCallback((accounts: string[]) => {
-    console.log('Accounts changed:', accounts);
-    
-    if (accounts.length === 0) {
-      disconnect();
-    } else if (accounts[0] !== state.wallet?.address) {
-      // Account changed, reinitialize
-      initializeWallet();
-    }
-  }, [state.wallet?.address, disconnect]);
-
-  const handleChainChanged = useCallback((chainId: string) => {
-    const newChainId = parseInt(chainId, 16);
-    console.log('Chain changed:', newChainId);
-    
-    dispatch({ type: 'SET_CHAIN_ID', payload: newChainId });
-    walletStorage.setPreferredNetwork(newChainId);
-    
-    if (state.wallet) {
-      const updatedWallet = { ...state.wallet, chainId: newChainId };
-      dispatch({ type: 'SET_WALLET', payload: updatedWallet });
-    }
-  }, [state.wallet]);
-
-  const handleDisconnect = useCallback(() => {
-    console.log('Wallet disconnected');
-    disconnect();
-  }, [disconnect]);
-
-  const actions: Web3Actions = {
+  const value: Web3ContextType = {
+    wallet,
+    isConnecting,
+    error,
+    chainId,
+    provider,
+    signer,
     connect,
     disconnect,
     switchNetwork: switchNetworkHandler,
     signMessage: signMessageHandler,
-    sendTransaction,
-    getBalance,
-    getTokenBalance,
   };
 
   return (
-    <Web3Context.Provider value={{ state, actions }}>
+    <Web3Context.Provider value={value}>
       {children}
     </Web3Context.Provider>
   );
 };
 
-// Hook to use Web3 context
 export const useWeb3 = () => {
   const context = useContext(Web3Context);
   if (!context) {
@@ -417,26 +308,33 @@ export const useWeb3 = () => {
 
 // Utility hooks
 export const useWallet = () => {
-  const { state } = useWeb3();
-  return state.wallet;
+  const { wallet } = useWeb3();
+  return wallet;
 };
 
 export const useIsConnected = () => {
-  const { state } = useWeb3();
-  return !!state.wallet?.isConnected;
+  const { wallet } = useWeb3();
+  return !!wallet?.isConnected;
 };
 
 export const useChainId = () => {
-  const { state } = useWeb3();
-  return state.chainId;
+  const { chainId } = useWeb3();
+  return chainId;
 };
 
 export const useProvider = () => {
-  const { state } = useWeb3();
-  return state.provider;
+  const { provider } = useWeb3();
+  return provider;
 };
 
 export const useSigner = () => {
-  const { state } = useWeb3();
-  return state.signer;
+  const { signer } = useWeb3();
+  return signer;
 };
+
+// Extend Window interface for TypeScript
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}

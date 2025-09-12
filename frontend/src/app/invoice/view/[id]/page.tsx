@@ -200,7 +200,7 @@ export default function PublicInvoicePage() {
               <div>
                 <dt className="text-sm font-medium text-gray-500">Payment Token</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {invoice.token?.symbol} - {invoice.token?.name}
+                  {invoice.token?.symbol}
                 </dd>
               </div>
 
@@ -231,7 +231,7 @@ export default function PublicInvoicePage() {
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && (
                 <div className="mt-4 sm:mt-0">
                   <button
-                    onClick={() => toast.info('Payment integration coming soon!')}
+                    onClick={() => toast('Payment integration coming soon!')}
                     className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <svg className="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,7 +286,7 @@ export default function PublicInvoicePage() {
                     </div>
                     {payment.transactionHash && (
                       <a
-                        href={`${invoice.network?.explorerUrl || ''}/tx/${payment.transactionHash}`}
+                        href={`https://etherscan.io/tx/${payment.transactionHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:text-blue-500 text-sm"

@@ -10,6 +10,7 @@ const createApiClient = (): AxiosInstance => {
     timeout: config.api.timeout,
     headers: {
       'Content-Type': 'application/json',
+      'X-Client-Type': 'frontend',
       'X-Client-Version': '1.0.0',
       'X-Request-Source': 'frontend',
       // Tenant ID will be extracted from JWT token by backend middleware
@@ -23,6 +24,18 @@ const createApiClient = (): AxiosInstance => {
       const token = getAuthToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        console.debug('🔐 API Request: Authorization header set', {
+          url: config.url,
+          method: config.method,
+          tokenPreview: token.substring(0, 20) + '...',
+          hasAuthHeader: !!config.headers.Authorization
+        });
+      } else {
+        console.debug('⚠️ API Request: No token available', {
+          url: config.url,
+          method: config.method,
+          hasAuthHeader: !!config.headers.Authorization
+        });
       }
 
       // Add request ID for tracking
@@ -31,15 +44,18 @@ const createApiClient = (): AxiosInstance => {
       // Add timestamp
       config.headers['X-Request-Timestamp'] = new Date().toISOString();
 
-      // Debug logging for requests
-      if (config.debug?.enabled) {
-        console.log('API Request:', {
-          url: config.url,
-          method: config.method,
-          hasAuth: !!config.headers.Authorization,
-          baseURL: config.baseURL
-        });
-      }
+      // Debug logging for requests - Always log for debugging
+      console.debug('🌐 API Request:', {
+        url: config.url,
+        method: config.method,
+        hasAuth: !!config.headers.Authorization,
+        baseURL: config.baseURL,
+        headers: {
+          Authorization: config.headers.Authorization ? '[PRESENT]' : '[MISSING]',
+          'Content-Type': config.headers['Content-Type'],
+          'X-Request-ID': config.headers['X-Request-ID']
+        }
+      });
 
       return config;
     },
@@ -128,12 +144,33 @@ const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   const token = authStorage.getToken();
   
-  // Debug logging for authentication
-  if (process.env.NODE_ENV === 'development') {
-    console.log('API Client - Auth token exists:', !!token);
-    if (token) {
-      console.log('API Client - Token length:', token.length);
-      console.log('API Client - Token preview:', token.substring(0, 20) + '...');
+  // Enhanced debug logging for authentication issues
+  console.debug('🔍 API Client - Getting auth token:', {
+    exists: !!token,
+    length: token?.length || 0,
+    preview: token ? token.substring(0, 20) + '...' : 'null',
+    rawLocalStorage: localStorage.getItem('fluxion_auth_token') ? 'exists' : 'missing',
+    allFluxionKeys: Object.keys(localStorage).filter(k => k.includes('fluxion')),
+    authStorageMethod: typeof authStorage.getToken
+  });
+  
+  // Additional check - try to retrieve directly from localStorage
+  const directToken = localStorage.getItem('fluxion_auth_token');
+  if (directToken && !token) {
+    console.error('❌ Token exists in localStorage but authStorage.getToken() returns null!');
+    console.debug('Direct token preview:', directToken.substring(0, 50) + '...');
+    
+    // Try parsing the direct token to see what's wrong
+    try {
+      const parsed = JSON.parse(directToken);
+      console.debug('❌ Direct token structure:', {
+        hasValue: !!parsed.value,
+        hasTimestamp: !!parsed.timestamp,
+        hasExpiration: !!parsed.expiresAt,
+        expired: parsed.expiresAt ? Date.now() > parsed.expiresAt : false
+      });
+    } catch (e) {
+      console.debug('❌ Direct token is not JSON:', e);
     }
   }
   
@@ -646,27 +683,9 @@ export const configApi = {
 
   // Get lightweight configuration summary for frontend bootstrap
   getSummary: async () => {
-    const cacheKey = SESSION_STORAGE_KEYS.CONFIG_SUMMARY;
-    
-    // Try to get from cache first
-    if (typeof window !== 'undefined') {
-      const cached = sessionCache.get(cacheKey);
-      if (cached) {
-        console.log('Using cached summary data');
-        return cached;
-      }
-    }
-    
-    // If not cached, fetch from API
-    const response = await apiRequest.get(apiEndpoints.config.summary);
-    
-    // Cache the response for future use
-    if (typeof window !== 'undefined') {
-      sessionCache.set(cacheKey, response);
-      console.log('Summary data cached');
-    }
-    
-    return response;
+    console.warn('/config/summary endpoint not available. Using fallback to load networks and tokens separately.');
+    // Throw error to trigger fallback logic in ConfigContext
+    throw new Error('Summary endpoint not available - fallback to individual endpoints');
   },
 
   // Validate network support

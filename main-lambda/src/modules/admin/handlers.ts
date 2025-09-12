@@ -4,13 +4,9 @@ import { Logger } from '@/shared/utils/logger';
 import { 
   authenticateJWT, 
   validateRequest, 
-  asyncHandler,
-  adminOnly,
-  requireSystemRole,
-  requireSystemSuperAdmin,
-  requireSystemAdmin
+  asyncHandler
 } from '@/shared/middleware';
-import { requireSuperAdmin, requireAdmin, auditAdminOperation } from '@/shared/middleware/super-admin';
+import { permissionMiddleware } from '@/shared/utils/permissions';
 import { getTenantContext, extractTenantContext } from '@/shared/middleware/tenant';
 import { adminAuthRoutes } from './auth.handlers';
 import {
@@ -32,7 +28,7 @@ router.use('/', adminAuthRoutes);
 // All admin routes require authentication and admin privileges
 router.use(authenticateJWT);
 router.use(extractTenantContext());
-router.use(adminOnly);
+router.use(permissionMiddleware.requireUserManagement);
 
 /**
  * @swagger
@@ -618,7 +614,6 @@ router.put('/tokens/:id',
  *                           type: number
  */
 router.get('/system/stats',
-  auditAdminOperation('view_system_stats'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     
@@ -650,7 +645,6 @@ router.get('/system/stats',
  *         description: System health check completed
  */
 router.get('/system/health',
-  auditAdminOperation('view_system_health'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     
@@ -678,8 +672,7 @@ router.get('/system/health',
  *       - superAdminAccess: []
  */
 router.post('/system/maintenance',
-  requireSuperAdmin,
-  auditAdminOperation('toggle_maintenance_mode'),
+  permissionMiddleware.requireSuperAdmin,
   validateRequest({
     body: {
       enabled: { type: 'boolean', required: true },
@@ -748,7 +741,6 @@ router.post('/system/maintenance',
  *           enum: [active, inactive, suspended]
  */
 router.get('/organizations',
-  auditAdminOperation('view_organizations'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const { limit = 50, offset = 0, search, status } = req.query;
@@ -791,7 +783,6 @@ router.get('/organizations',
  *       - adminAccess: []
  */
 router.get('/organizations/:id',
-  auditAdminOperation('view_organization_details'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const organizationId = req.params.id;
@@ -821,7 +812,6 @@ router.get('/organizations/:id',
  *       - adminAccess: []
  */
 router.get('/organizations/:id/users',
-  auditAdminOperation('view_organization_users'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const organizationId = req.params.id;
@@ -864,7 +854,6 @@ router.get('/organizations/:id/users',
  *       - adminAccess: []
  */
 router.get('/organizations/:id/activity',
-  auditAdminOperation('view_organization_activity'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const organizationId = req.params.id;
@@ -940,7 +929,6 @@ router.get('/organizations/:id/activity',
  *         description: Show only admin users
  */
 router.get('/users',
-  auditAdminOperation('view_users'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const { 
@@ -991,8 +979,7 @@ router.get('/users',
  *       - superAdminAccess: []
  */
 router.put('/users/:id/admin-status',
-  requireSuperAdmin,
-  auditAdminOperation('update_user_admin_status'),
+  permissionMiddleware.requireSuperAdmin,
   validateRequest({
     body: {
       isAdmin: { type: 'boolean', required: true },
@@ -1034,7 +1021,6 @@ router.put('/users/:id/admin-status',
  *       - adminAccess: []
  */
 router.get('/users/:id/activity',
-  auditAdminOperation('view_user_activity'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const userId = req.params.id;
@@ -1064,6 +1050,240 @@ router.get('/users/:id/activity',
   })
 );
 
+// =============================================================================
+// EXTENDED USER AND ORGANIZATION MANAGEMENT
+// =============================================================================
+
+/**
+ * @swagger
+ * /admin/organizations/{id}/users/{userId}/roles:
+ *   post:
+ *     tags:
+ *       - Admin Organizations
+ *     summary: Change user roles in organization (admin/super_admin only)
+ *     description: Assign or change user roles within a specific organization
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.post('/organizations/:id/users/:userId/roles',
+  permissionMiddleware.requireUserManagement,
+  validateRequest({
+    body: {
+      roleKey: { type: 'string', required: true },
+      action: { type: 'string', enum: ['assign', 'revoke'], required: true },
+      reason: { type: 'string', optional: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const organizationId = req.params.id;
+    const targetUserId = req.params.userId;
+    const { roleKey, action, reason } = req.body;
+    
+    const result = await adminService.changeUserOrganizationRole(
+      tenantContext,
+      organizationId,
+      targetUserId,
+      roleKey,
+      action,
+      reason
+    );
+    
+    logger.info('Admin: User organization role changed', {
+      adminUser: tenantContext.userId,
+      organizationId,
+      targetUserId,
+      roleKey,
+      action,
+      reason
+    });
+    
+    res.success(result);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/organizations/{id}/users/{userId}:
+ *   delete:
+ *     tags:
+ *       - Admin Organizations
+ *     summary: Remove user from organization (admin/super_admin only)
+ *     description: Remove a user from a specific organization
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.delete('/organizations/:id/users/:userId',
+  permissionMiddleware.requireUserManagement,
+  validateRequest({
+    body: {
+      reason: { type: 'string', optional: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const organizationId = req.params.id;
+    const targetUserId = req.params.userId;
+    const { reason } = req.body;
+    
+    await adminService.removeUserFromOrganization(
+      tenantContext,
+      organizationId,
+      targetUserId,
+      reason
+    );
+    
+    logger.info('Admin: User removed from organization', {
+      adminUser: tenantContext.userId,
+      organizationId,
+      targetUserId,
+      reason
+    });
+    
+    res.success({ success: true });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/users/{id}/organizations:
+ *   get:
+ *     tags:
+ *       - Admin Users
+ *     summary: Get user's organizations
+ *     description: Retrieves all organizations a user belongs to
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/users/:id/organizations',
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const userId = req.params.id;
+    
+    const organizations = await adminService.getUserOrganizations(tenantContext, userId);
+    
+    logger.info('Admin: User organizations retrieved', {
+      adminUser: tenantContext.userId,
+      targetUserId: userId,
+      count: organizations.length
+    });
+    
+    res.success(organizations);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/users/{id}/roles:
+ *   put:
+ *     tags:
+ *       - Admin Users
+ *     summary: Change user system/org roles (admin/super_admin only)
+ *     description: Assign or revoke system-wide or organization-specific roles
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.put('/users/:id/roles',
+  permissionMiddleware.requireUserManagement,
+  validateRequest({
+    body: {
+      systemRoles: { 
+        type: 'array', 
+        items: { 
+          type: 'object',
+          properties: {
+            roleKey: { type: 'string', required: true },
+            action: { type: 'string', enum: ['assign', 'revoke'], required: true }
+          }
+        },
+        optional: true 
+      },
+      organizationRoles: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            organizationId: { type: 'string', required: true },
+            roleKey: { type: 'string', required: true },
+            action: { type: 'string', enum: ['assign', 'revoke'], required: true }
+          }
+        },
+        optional: true
+      },
+      reason: { type: 'string', optional: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const targetUserId = req.params.id;
+    const { systemRoles, organizationRoles, reason } = req.body;
+    
+    const result = await adminService.changeUserRoles(
+      tenantContext,
+      targetUserId,
+      { systemRoles, organizationRoles },
+      reason
+    );
+    
+    logger.info('Admin: User roles changed', {
+      adminUser: tenantContext.userId,
+      targetUserId,
+      systemRoleChanges: systemRoles?.length || 0,
+      orgRoleChanges: organizationRoles?.length || 0,
+      reason
+    });
+    
+    res.success(result);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/users/{id}:
+ *   delete:
+ *     tags:
+ *       - Admin Users
+ *     summary: Remove user from system (admin/super_admin only)
+ *     description: Completely remove a user from the Fluxion system
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.delete('/users/:id',
+  permissionMiddleware.requireUserManagement,
+  validateRequest({
+    body: {
+      reason: { type: 'string', required: true },
+      deleteData: { type: 'boolean', optional: true, default: false }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const targetUserId = req.params.id;
+    const { reason, deleteData } = req.body;
+    
+    await adminService.removeUserFromSystem(
+      tenantContext,
+      targetUserId,
+      reason,
+      deleteData || false
+    );
+    
+    logger.info('Admin: User removed from system', {
+      adminUser: tenantContext.userId,
+      targetUserId,
+      reason,
+      deleteData: deleteData || false
+    });
+    
+    res.success({ success: true });
+  })
+);
+
 /**
  * Template Management
  */
@@ -1081,7 +1301,6 @@ router.get('/users/:id/activity',
  *       - adminAccess: []
  */
 router.get('/templates',
-  auditAdminOperation('view_system_templates'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     
@@ -1109,7 +1328,6 @@ router.get('/templates',
  *       - adminAccess: []
  */
 router.put('/templates/:id',
-  auditAdminOperation('update_system_template'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const templateId = req.params.id;
@@ -1143,7 +1361,6 @@ router.put('/templates/:id',
  *       - adminAccess: []
  */
 router.post('/templates/:id/activate',
-  auditAdminOperation('toggle_template_status'),
   validateRequest({
     body: {
       isActive: { type: 'boolean', required: true }
@@ -1183,7 +1400,6 @@ router.post('/templates/:id/activate',
  *       - adminAccess: []
  */
 router.post('/templates/bulk-update',
-  auditAdminOperation('bulk_template_operation'),
   validateRequest({
     body: {
       templateIds: { type: 'array', items: { type: 'string' }, required: true },
@@ -1235,7 +1451,6 @@ router.post('/templates/bulk-update',
  *         description: Show only public settings
  */
 router.get('/settings',
-  auditAdminOperation('view_system_settings'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const { category, publicOnly } = req.query;
@@ -1269,8 +1484,7 @@ router.get('/settings',
  *       - superAdminAccess: []
  */
 router.put('/settings/:key',
-  requireSuperAdmin,
-  auditAdminOperation('update_system_setting'),
+  permissionMiddleware.requireSuperAdmin,
   validateRequest({
     body: {
       value: { required: true },
@@ -1375,7 +1589,6 @@ router.put('/settings/:key',
  *         description: Filter to end date
  */
 router.get('/activity',
-  auditAdminOperation('view_activity_logs'),
   asyncHandler(async (req: Request, res: Response) => {
     const tenantContext = getTenantContext(req);
     const { 
@@ -1426,6 +1639,574 @@ router.get('/activity',
         offset: parseInt(offset as string, 10)
       }
     });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/audit-logs/users/{userId}:
+ *   get:
+ *     tags:
+ *       - Admin Audit
+ *     summary: Get user-specific audit logs (admin/super_admin only)
+ *     description: Retrieves comprehensive audit logs for a specific user
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/audit-logs/users/:userId',
+  permissionMiddleware.requireUserManagement,
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const targetUserId = req.params.userId;
+    const { limit = 100, offset = 0, severityLevel, action, startDate, endDate } = req.query;
+    
+    const filters = {
+      userId: targetUserId,
+      severityLevel: severityLevel as string,
+      action: action as string,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined
+    };
+    
+    const result = await adminService.getUserAuditLogs(
+      tenantContext,
+      targetUserId,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10),
+      filters
+    );
+    
+    logger.info('Admin: User audit logs retrieved', {
+      adminUser: tenantContext.userId,
+      targetUserId,
+      count: result.logs.length,
+      total: result.total
+    });
+    
+    res.success({
+      logs: result.logs,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/audit-logs/organizations/{organizationId}:
+ *   get:
+ *     tags:
+ *       - Admin Audit
+ *     summary: Get organization audit logs (admin/super_admin only)
+ *     description: Retrieves comprehensive audit logs for a specific organization
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.get('/audit-logs/organizations/:organizationId',
+  permissionMiddleware.requireUserManagement,
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const organizationId = req.params.organizationId;
+    const { limit = 100, offset = 0, severityLevel, action, startDate, endDate } = req.query;
+    
+    const filters = {
+      organizationId,
+      severityLevel: severityLevel as string,
+      action: action as string,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined
+    };
+    
+    const result = await adminService.getOrganizationAuditLogs(
+      tenantContext,
+      organizationId,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10),
+      filters
+    );
+    
+    logger.info('Admin: Organization audit logs retrieved', {
+      adminUser: tenantContext.userId,
+      organizationId,
+      count: result.logs.length,
+      total: result.total
+    });
+    
+    res.success({
+      logs: result.logs,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10)
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /admin/audit-logs/export:
+ *   post:
+ *     tags:
+ *       - Admin Audit
+ *     summary: Export audit logs (admin/super_admin only)
+ *     description: Export audit logs in CSV/JSON format
+ *     security:
+ *       - bearerAuth: []
+ *       - adminAccess: []
+ */
+router.post('/audit-logs/export',
+  permissionMiddleware.requireUserManagement,
+  validateRequest({
+    body: {
+      format: { type: 'string', enum: ['csv', 'json'], required: true },
+      filters: {
+        type: 'object',
+        properties: {
+          userId: { type: 'string', optional: true },
+          organizationId: { type: 'string', optional: true },
+          action: { type: 'string', optional: true },
+          tableName: { type: 'string', optional: true },
+          severityLevel: { type: 'string', optional: true },
+          startDate: { type: 'string', optional: true },
+          endDate: { type: 'string', optional: true },
+          adminOnly: { type: 'boolean', optional: true },
+          highRiskOnly: { type: 'boolean', optional: true }
+        },
+        optional: true
+      },
+      maxRecords: { type: 'number', minimum: 1, maximum: 50000, optional: true, default: 10000 }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { format, filters, maxRecords } = req.body;
+    
+    const exportResult = await adminService.exportAuditLogs(
+      tenantContext,
+      format,
+      filters || {},
+      maxRecords || 10000
+    );
+    
+    logger.info('Admin: Audit logs exported', {
+      adminUser: tenantContext.userId,
+      format,
+      recordCount: exportResult.recordCount,
+      filters
+    });
+    
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="audit_logs_${Date.now()}.csv"`);
+    } else {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="audit_logs_${Date.now()}.json"`);
+    }
+    
+    res.send(exportResult.data);
+  })
+);
+
+/**
+ * @swagger
+ * /admin/global-stats:
+ *   get:
+ *     tags:
+ *       - Admin System
+ *     summary: Get global statistics for multi-organization dashboard (system admin only)
+ *     description: |
+ *       Retrieves comprehensive cross-organization statistics including users, organizations, 
+ *       invoices, revenue, and activity data. Only accessible to system administrators.
+ *       Data is cached for 5 minutes for performance.
+ *     security:
+ *       - bearerAuth: []
+ *       - systemAdminAccess: []
+ *     responses:
+ *       200:
+ *         description: Global statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalUsers:
+ *                       type: integer
+ *                       description: Total number of users across all organizations
+ *                       example: 1250
+ *                     totalOrganizations:
+ *                       type: integer
+ *                       description: Total number of organizations
+ *                       example: 45
+ *                     totalInvoices:
+ *                       type: integer
+ *                       description: Total number of invoices across all organizations
+ *                       example: 8920
+ *                     totalRevenue:
+ *                       type: number
+ *                       description: Total revenue from completed payments
+ *                       example: 2847561.50
+ *                     recentActivity:
+ *                       type: array
+ *                       description: Recent high-level activity logs
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           action:
+ *                             type: string
+ *                           userDisplayName:
+ *                             type: string
+ *                           organizationName:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           summary:
+ *                             type: string
+ *                     organizationBreakdown:
+ *                       type: array
+ *                       description: Top organizations with statistics
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           userCount:
+ *                             type: integer
+ *                           invoiceCount:
+ *                             type: integer
+ *                           revenue:
+ *                             type: number
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: System admin access required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get('/global-stats',
+  permissionMiddleware.requireSystemAdmin, // Only system admins can access global statistics
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    
+    try {
+      const globalStats = await adminService.getGlobalStatistics(tenantContext);
+      
+      logger.info('Admin: Global statistics retrieved successfully', {
+        adminUser: tenantContext.userId,
+        totalUsers: globalStats.totalUsers,
+        totalOrganizations: globalStats.totalOrganizations,
+        totalRevenue: globalStats.totalRevenue,
+        orgBreakdownCount: globalStats.organizationBreakdown.length
+      });
+      
+      res.success(globalStats);
+      
+    } catch (error: any) {
+      logger.error('Admin: Failed to retrieve global statistics', {
+        error: error.message,
+        adminUser: tenantContext.userId
+      });
+      
+      if (error.code === 'FORBIDDEN') {
+        return res.error('FORBIDDEN', 'System admin access required for global statistics', 403);
+      }
+      
+      return res.error('INTERNAL_ERROR', 'Failed to retrieve global statistics', 500);
+    }
+  })
+);
+
+/**
+ * @swagger
+ * /admin/activity-logs:
+ *   get:
+ *     tags:
+ *       - Admin Activity
+ *     summary: Get global activity logs (system admin only)
+ *     description: |
+ *       Retrieves cross-organization activity logs with filtering and pagination.
+ *       Only accessible to system administrators with cross-tenant permissions.
+ *       Provides comprehensive audit trail across all organizations.
+ *     security:
+ *       - bearerAuth: []
+ *       - systemAdminAccess: []
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 200
+ *           default: 50
+ *         description: Maximum number of logs to return
+ *       - name: offset
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of logs to skip
+ *       - name: organizationId
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Filter by specific organization ID
+ *       - name: action
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [CREATE, UPDATE, DELETE, LOGIN, LOGOUT, EXPORT, IMPORT]
+ *         description: Filter by activity type
+ *       - name: severityLevel
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [low, medium, high, critical]
+ *         description: Filter by severity level
+ *       - name: startDate
+ *         in: query
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter from start date (ISO 8601)
+ *       - name: endDate
+ *         in: query
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter to end date (ISO 8601)
+ *       - name: highRiskOnly
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Show only high-risk operations
+ *     responses:
+ *       200:
+ *         description: Activity logs retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     logs:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           action:
+ *                             type: string
+ *                           tableName:
+ *                             type: string
+ *                           displayAction:
+ *                             type: string
+ *                           displayTableName:
+ *                             type: string
+ *                           userDisplayName:
+ *                             type: string
+ *                           organizationName:
+ *                             type: string
+ *                           isHighRisk:
+ *                             type: boolean
+ *                           adminAction:
+ *                             type: boolean
+ *                           severityLevel:
+ *                             type: string
+ *                           ipAddress:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           summary:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         offset:
+ *                           type: integer
+ *                     filters:
+ *                       type: object
+ *                       properties:
+ *                         organizations:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           description: Available organization IDs for filtering
+ *                         actions:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           description: Available actions for filtering
+ *                         severityLevels:
+ *                           type: array
+ *                           items:
+ *                             type: string
+ *                           description: Available severity levels for filtering
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: System admin access required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.get('/activity-logs',
+  permissionMiddleware.requireSystemAdmin, // Only system admins can access cross-organization logs
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { 
+      limit = 50, 
+      offset = 0, 
+      organizationId,
+      action,
+      severityLevel,
+      startDate,
+      endDate,
+      highRiskOnly
+    } = req.query;
+    
+    // Build filters object
+    const filters = {
+      adminOnly: false, // Show all activities, not just admin
+      highRiskOnly: highRiskOnly === 'true',
+      organizationId: organizationId as string,
+      action: action as string,
+      severityLevel: severityLevel as string,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined
+    };
+    
+    try {
+      // Get activity logs with cross-organization access
+      const result = await adminService.getActivityLogs(
+        tenantContext,
+        parseInt(limit as string, 10),
+        parseInt(offset as string, 10),
+        filters
+      );
+
+      // Get available filter options for frontend
+      const [organizationOptions, actionOptions, severityOptions] = await Promise.all([
+        getAvailableOrganizations(),
+        getAvailableActions(),
+        getAvailableSeverityLevels()
+      ]);
+      
+      logger.info('Admin: Global activity logs retrieved', {
+        adminUser: tenantContext.userId,
+        count: result.logs.length,
+        total: result.total,
+        filters: {
+          organizationId,
+          action,
+          severityLevel,
+          startDate,
+          endDate,
+          highRiskOnly
+        }
+      });
+      
+      res.success({
+        logs: result.logs,
+        pagination: {
+          total: result.total,
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10)
+        },
+        filters: {
+          organizations: organizationOptions,
+          actions: actionOptions,
+          severityLevels: severityOptions
+        }
+      });
+      
+    } catch (error: any) {
+      logger.error('Admin: Failed to retrieve global activity logs', {
+        error: error.message,
+        adminUser: tenantContext.userId,
+        filters
+      });
+      
+      if (error.code === 'FORBIDDEN') {
+        return res.error('FORBIDDEN', 'System admin access required for global activity logs', 403);
+      }
+      
+      return res.error('INTERNAL_ERROR', 'Failed to retrieve global activity logs', 500);
+    }
+
+    // Helper functions to get filter options
+    async function getAvailableOrganizations(): Promise<string[]> {
+      try {
+        const { AppDataSource } = await import('@/database/data-source');
+        const result = await AppDataSource.query(`
+          SELECT DISTINCT o.id, o.name 
+          FROM organizations o 
+          INNER JOIN audit_logs al ON al.organization_id = o.id
+          WHERE o.deleted_at IS NULL
+          ORDER BY o.name
+          LIMIT 100
+        `);
+        return result.map((row: any) => ({ id: row.id, name: row.name }));
+      } catch (error) {
+        logger.error('Failed to get organization filter options', { error });
+        return [];
+      }
+    }
+
+    async function getAvailableActions(): Promise<string[]> {
+      try {
+        const { AppDataSource } = await import('@/database/data-source');
+        const result = await AppDataSource.query(`
+          SELECT DISTINCT action 
+          FROM audit_logs 
+          WHERE action IS NOT NULL
+          ORDER BY action
+        `);
+        return result.map((row: any) => row.action);
+      } catch (error) {
+        logger.error('Failed to get action filter options', { error });
+        return ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT', 'IMPORT'];
+      }
+    }
+
+    async function getAvailableSeverityLevels(): Promise<string[]> {
+      return ['low', 'medium', 'high', 'critical'];
+    }
   })
 );
 

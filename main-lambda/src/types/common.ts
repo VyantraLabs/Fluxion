@@ -241,11 +241,7 @@ export interface RequestContext {
   userId?: string;
   walletAddress?: string;
   tenantId?: string;
-  userRole?: string;
-  isAdmin?: boolean;
-  isSuperAdmin?: boolean;
-  isSystemUser?: boolean;
-  systemRoles?: string[];
+  userRole?: string; // Single role: super_admin > system_admin > owner > admin > member > viewer
   functionName?: string;
   functionVersion?: string;
   timestamp: string;

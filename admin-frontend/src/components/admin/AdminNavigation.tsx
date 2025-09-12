@@ -30,21 +30,21 @@ const navigation = [
     href: '/organizations',
     icon: BuildingOfficeIcon,
     permission: 'organizations:list' as SystemPermission,
-    roles: ['system_super_admin', 'system_admin'] as SystemRole[],
+    roles: ['super_admin', 'admin'] as SystemRole[],
   },
   {
     name: 'Users',
     href: '/users',
     icon: UsersIcon,
     permission: 'users:list' as SystemPermission,
-    roles: ['system_super_admin', 'system_admin', 'system_support'] as SystemRole[],
+    roles: ['super_admin', 'admin', 'support'] as SystemRole[],
   },
   {
     name: 'Templates',
     href: '/templates',
     icon: DocumentTextIcon,
     permission: 'templates:list' as SystemPermission,
-    roles: ['system_super_admin', 'system_admin'] as SystemRole[],
+    roles: ['super_admin', 'admin'] as SystemRole[],
   },
   {
     name: 'Activity Logs',
@@ -57,7 +57,7 @@ const navigation = [
     href: '/settings',
     icon: Cog6ToothIcon,
     permission: 'system:settings:read' as SystemPermission,
-    roles: ['system_super_admin'] as SystemRole[],
+    roles: ['super_admin'] as SystemRole[],
   },
 ]
 
@@ -190,8 +190,27 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
             </p>
             <div className="flex flex-col space-y-1">
               {(() => {
-                // Handle both system_roles and systemRoles properties
+                // Handle both array format (legacy) and single role format (new)
                 const systemRoles = user?.system_roles || user?.systemRoles || []
+                const singleRole = user?.role
+                
+                // If single role format (new backend), display it
+                if (singleRole && (!systemRoles || systemRoles.length === 0)) {
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      <span
+                        className={clsx(
+                          'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border',
+                          getSystemRoleBadgeColor(singleRole)
+                        )}
+                      >
+                        {getSystemRoleDisplayName(singleRole)}
+                      </span>
+                    </div>
+                  )
+                }
+                
+                // If array format (legacy), display as before
                 return systemRoles.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {systemRoles.slice(0, 1).map((role) => (

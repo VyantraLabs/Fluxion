@@ -86,7 +86,7 @@ export const corsHandler = (req: Request, res: Response, next: NextFunction) => 
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-ID, X-Request-Timestamp, X-Client-Version, X-Request-Source, X-Tenant-ID');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-ID, X-Request-Timestamp, X-Client-Version, X-Request-Source, X-Tenant-ID, X-Client-Type');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400');
 
@@ -279,10 +279,6 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
       walletAddress: decoded.wallet_address,
       tenantId: decoded.tenant_id,
       role: decoded.role,
-      isAdmin: decoded.is_admin,
-      isSuperAdmin: decoded.is_super_admin,
-      isSystemUser: decoded.is_system_user,
-      systemRoles: decoded.system_roles,
       issuedAt: decoded.iat,
       expiresAt: decoded.exp,
       currentTime: Math.floor(Date.now() / 1000)
@@ -350,10 +346,6 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
     (req.context as RequestContext).walletAddress = decoded.wallet_address;
     (req.context as RequestContext).tenantId = decoded.tenant_id;
     (req.context as RequestContext).userRole = decoded.role;
-    (req.context as RequestContext).isAdmin = decoded.is_admin || false;
-    (req.context as RequestContext).isSuperAdmin = decoded.is_super_admin || false;
-    (req.context as RequestContext).isSystemUser = decoded.is_system_user || false;
-    (req.context as RequestContext).systemRoles = decoded.system_roles || [];
 
     // Store JWT payload for system role middleware
     (req as any).user = decoded;
@@ -366,7 +358,6 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
       walletAddress: decoded.wallet_address,
       tenantId: decoded.tenant_id,
       role: decoded.role,
-      isAdmin: decoded.is_admin || false,
       contextSet: true
     });
 
@@ -596,6 +587,48 @@ export const notFoundHandler = (req: Request, res: Response) => {
 };
 
 /**
+ * Synchronous request validation helper that returns validation results
+ */
+export const validateRequestSync = (schema: any, req: Request): { success: boolean; data?: any; error?: { message: string; details?: any } } => {
+  try {
+    const validatedData = schema.parse({
+      body: req.body,
+      params: req.params,
+      query: req.query,
+      headers: req.headers
+    });
+    
+    return {
+      success: true,
+      data: validatedData
+    };
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const formattedErrors = error.errors.map(err => ({
+        field: err.path.join('.'),
+        message: err.message,
+        code: err.code
+      }));
+      
+      return {
+        success: false,
+        error: {
+          message: error.errors[0]?.message || 'Validation failed',
+          details: formattedErrors
+        }
+      };
+    }
+    
+    return {
+      success: false,
+      error: {
+        message: 'Validation failed due to internal error'
+      }
+    };
+  }
+};
+
+/**
  * Validation middleware factory
  */
 export const validateRequest = (schemas: {
@@ -777,24 +810,23 @@ export const adminOnly = async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    // Check admin privileges from JWT token first (faster and more reliable)
-    const context = req.context as RequestContext & { isAdmin?: boolean; isSuperAdmin?: boolean };
-    const hasAdminFromJWT = context?.isAdmin === true || context?.isSuperAdmin === true;
+    // Check admin privileges from role hierarchy
+    const userRole = req.context.userRole;
+    const { permissions } = await import('@/shared/utils/role-hierarchy');
+    const hasAdminAccess = permissions.canManageUsers(userRole);
     
-    logger.debug('Admin access check via JWT', {
+    logger.debug('Admin access check via role', {
       userId: req.context.userId,
       path: req.path,
-      isAdmin: context?.isAdmin,
-      isSuperAdmin: context?.isSuperAdmin,
-      hasAdminFromJWT
+      userRole,
+      hasAdminAccess
     });
 
-    if (hasAdminFromJWT) {
-      logger.info('Admin access granted via JWT token', {
+    if (hasAdminAccess) {
+      logger.info('Admin access granted via role hierarchy', {
         userId: req.context.userId,
         path: req.path,
-        isAdmin: context?.isAdmin,
-        isSuperAdmin: context?.isSuperAdmin
+        userRole
       });
       next();
       return;
@@ -820,8 +852,7 @@ export const adminOnly = async (req: Request, res: Response, next: NextFunction)
       logger.warn('Non-admin user attempted to access admin endpoint', {
         userId: req.context.userId,
         path: req.path,
-        jwt_isAdmin: context?.isAdmin,
-        jwt_isSuperAdmin: context?.isSuperAdmin,
+        userRole,
         rbac_result: false
       });
       
@@ -841,9 +872,10 @@ export const adminOnly = async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    logger.info('Admin access granted via RBAC', {
+    logger.info('Admin access granted via RBAC fallback', {
       userId: req.context.userId,
-      path: req.path
+      path: req.path,
+      userRole
     });
 
     next();

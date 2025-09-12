@@ -211,7 +211,7 @@ export interface Web3State {
 
 // Web3 actions
 export interface Web3Actions {
-  connect: (provider?: WalletProvider) => Promise<void>;
+  connect: (provider?: WalletProvider) => Promise<WalletInfo>;
   disconnect: () => void;
   switchNetwork: (chainId: number) => Promise<void>;
   signMessage: (message: string) => Promise<string>;

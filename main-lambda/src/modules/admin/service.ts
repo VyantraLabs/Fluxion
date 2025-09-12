@@ -393,6 +393,102 @@ export class AdminService {
   }
 
   /**
+   * Get global statistics for multi-organization dashboard
+   * Cross-organization data aggregation for system admins
+   */
+  async getGlobalStatistics(tenantContext: TenantContext): Promise<{
+    totalUsers: number;
+    totalOrganizations: number;
+    totalInvoices: number;
+    totalRevenue: number;
+    recentActivity: ActivityLogEntry[];
+    organizationBreakdown: Array<{
+      id: string;
+      name: string;
+      userCount: number;
+      invoiceCount: number;
+      revenue: number;
+    }>;
+  }> {
+    this.logger.info('Admin: Retrieving global statistics', {
+      adminUser: tenantContext.userId
+    });
+
+    // Check system admin permissions first
+    const hasSuperAdmin = await this.validateSuperAdminAccess(tenantContext);
+    if (!hasSuperAdmin) {
+      throw new FluxionError(
+        ErrorCodes.FORBIDDEN,
+        'System admin access required for global statistics',
+        403
+      );
+    }
+
+    try {
+      const { getRedisClient, CacheHelper } = await import('@/shared/cache/redis-client');
+      const cacheKey = CacheHelper.userKey('system', tenantContext.userId!, 'global-stats');
+      
+      // Try to get from cache first (5-minute cache)
+      const cached = await getRedisClient().get(cacheKey);
+      if (cached) {
+        this.logger.info('Admin: Global statistics served from cache', {
+          adminUser: tenantContext.userId
+        });
+        return cached;
+      }
+
+      // Fetch global aggregated data
+      const [systemStats, organizationsWithStats, recentActivity] = await Promise.all([
+        this.adminRepository.getSystemStats(),
+        this.adminRepository.getAllOrganizationsWithStats(20, 0), // Top 20 organizations
+        this.adminRepository.getActivityLogs(10, 0, { adminOnly: true, highRiskOnly: false })
+      ]);
+
+      // Calculate total revenue from organizations
+      const totalRevenue = organizationsWithStats.organizations.reduce(
+        (sum, org) => sum + parseFloat(org.totalPayments || '0'), 
+        0
+      );
+
+      // Build organization breakdown
+      const organizationBreakdown = organizationsWithStats.organizations.map(org => ({
+        id: org.id,
+        name: org.name,
+        userCount: org.userCount,
+        invoiceCount: org.invoiceCount,
+        revenue: parseFloat(org.totalPayments || '0')
+      }));
+
+      const globalStats = {
+        totalUsers: systemStats.users.total,
+        totalOrganizations: systemStats.organizations.total,
+        totalInvoices: systemStats.invoices.total,
+        totalRevenue,
+        recentActivity: recentActivity.logs,
+        organizationBreakdown
+      };
+
+      // Cache for 5 minutes
+      await getRedisClient().set(cacheKey, globalStats, { ttl: 300 });
+
+      this.logger.info('Admin: Global statistics retrieved successfully', {
+        totalUsers: globalStats.totalUsers,
+        totalOrganizations: globalStats.totalOrganizations,
+        totalRevenue: globalStats.totalRevenue,
+        adminUser: tenantContext.userId
+      });
+
+      return globalStats;
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to retrieve global statistics', {
+        error: error.message,
+        adminUser: tenantContext.userId
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Validate admin permissions using RBAC
    */
   async validateAdminAccess(tenantContext: TenantContext): Promise<boolean> {
@@ -1361,6 +1457,560 @@ export class AdminService {
         userId: tenantContext.userId
       });
       return false;
+    }
+  }
+
+  // =============================================================================
+  // EXTENDED USER MANAGEMENT METHODS
+  // =============================================================================
+
+  /**
+   * Change user role in organization
+   */
+  async changeUserOrganizationRole(
+    tenantContext: TenantContext,
+    organizationId: string,
+    targetUserId: string,
+    roleKey: string,
+    action: 'assign' | 'revoke',
+    reason?: string
+  ): Promise<{ success: boolean; message: string }> {
+    this.logger.info('Admin: Changing user organization role', {
+      organizationId,
+      targetUserId,
+      roleKey,
+      action,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      if (action === 'assign') {
+        await this.rbacService.assignRole(targetUserId, roleKey, organizationId, tenantContext.userId!);
+      } else {
+        await this.rbacService.removeRole(targetUserId, roleKey, organizationId);
+      }
+
+      // Create audit log
+      const auditData = AuditLog.createForAdminAction(
+        organizationId,
+        tenantContext.userId!,
+        targetUserId,
+        'user_roles',
+        targetUserId,
+        'UPDATE',
+        'medium',
+        undefined,
+        { roleKey, action, reason },
+        {
+          operation: `${action}_organization_role`,
+          roleKey,
+          organizationId,
+          reason
+        }
+      );
+
+      await this.auditLogRepository.create(auditData);
+
+      this.logger.info('Admin: User organization role changed successfully', {
+        organizationId,
+        targetUserId,
+        roleKey,
+        action,
+        adminUser: tenantContext.userId
+      });
+
+      return {
+        success: true,
+        message: `Role ${roleKey} ${action === 'assign' ? 'assigned to' : 'revoked from'} user successfully`
+      };
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to change user organization role', {
+        error: error.message,
+        organizationId,
+        targetUserId,
+        roleKey,
+        action
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Remove user from organization
+   */
+  async removeUserFromOrganization(
+    tenantContext: TenantContext,
+    organizationId: string,
+    targetUserId: string,
+    reason?: string
+  ): Promise<void> {
+    this.logger.info('Admin: Removing user from organization', {
+      organizationId,
+      targetUserId,
+      reason,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      // Get all user roles in the organization
+      const userRoles = await this.rbacService.getUserRoles(targetUserId, organizationId);
+      
+      // Remove all roles
+      for (const userRole of userRoles) {
+        await this.rbacService.removeRole(targetUserId, userRole.role.key, organizationId);
+      }
+
+      // Create audit log
+      const auditData = AuditLog.createForAdminAction(
+        organizationId,
+        tenantContext.userId!,
+        targetUserId,
+        'user_roles',
+        targetUserId,
+        'DELETE',
+        'high',
+        undefined,
+        { reason, removedRoles: userRoles.map(ur => ur.role.key) },
+        {
+          operation: 'remove_user_from_organization',
+          organizationId,
+          reason,
+          roleCount: userRoles.length
+        }
+      );
+
+      await this.auditLogRepository.create(auditData);
+
+      this.logger.info('Admin: User removed from organization successfully', {
+        organizationId,
+        targetUserId,
+        removedRoles: userRoles.length,
+        adminUser: tenantContext.userId
+      });
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to remove user from organization', {
+        error: error.message,
+        organizationId,
+        targetUserId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's organizations
+   */
+  async getUserOrganizations(
+    tenantContext: TenantContext,
+    targetUserId: string
+  ): Promise<Array<{ id: string; name: string; role: string; joinedAt: Date }>> {
+    this.logger.info('Admin: Getting user organizations', {
+      targetUserId,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      const userRoles = await this.rbacService.getUserRoles(targetUserId);
+      const organizationIds = [...new Set(userRoles.map(ur => ur.organizationId))];
+
+      const organizations = await Promise.all(
+        organizationIds.map(async (orgId) => {
+          const organization = await this.organizationRepository.findById(orgId);
+          if (!organization) return null;
+
+          // Get user's highest role in this organization
+          const orgRoles = userRoles.filter(ur => ur.organizationId === orgId && !ur.isExpired);
+          const highestRole = await this.rbacService.getUserHighestRole(targetUserId, orgId);
+
+          return {
+            id: organization.id,
+            name: organization.name,
+            role: highestRole || 'member',
+            joinedAt: orgRoles[0]?.createdAt || new Date()
+          };
+        })
+      );
+
+      const validOrganizations = organizations.filter(Boolean) as Array<{
+        id: string;
+        name: string;
+        role: string;
+        joinedAt: Date;
+      }>;
+
+      this.logger.info('Admin: User organizations retrieved successfully', {
+        targetUserId,
+        organizationCount: validOrganizations.length,
+        adminUser: tenantContext.userId
+      });
+
+      return validOrganizations;
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to get user organizations', {
+        error: error.message,
+        targetUserId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Change user system/org roles
+   */
+  async changeUserRoles(
+    tenantContext: TenantContext,
+    targetUserId: string,
+    roleChanges: {
+      systemRoles?: Array<{ roleKey: string; action: 'assign' | 'revoke' }>;
+      organizationRoles?: Array<{ organizationId: string; roleKey: string; action: 'assign' | 'revoke' }>;
+    },
+    reason?: string
+  ): Promise<{ success: boolean; changes: number }> {
+    this.logger.info('Admin: Changing user roles', {
+      targetUserId,
+      systemRoleChanges: roleChanges.systemRoles?.length || 0,
+      orgRoleChanges: roleChanges.organizationRoles?.length || 0,
+      adminUser: tenantContext.userId
+    });
+
+    let totalChanges = 0;
+
+    try {
+      // Process system role changes
+      if (roleChanges.systemRoles) {
+        for (const change of roleChanges.systemRoles) {
+          if (change.action === 'assign') {
+            await this.rbacService.assignRole(targetUserId, change.roleKey, undefined, tenantContext.userId!);
+          } else {
+            await this.rbacService.removeRole(targetUserId, change.roleKey);
+          }
+          totalChanges++;
+        }
+      }
+
+      // Process organization role changes
+      if (roleChanges.organizationRoles) {
+        for (const change of roleChanges.organizationRoles) {
+          if (change.action === 'assign') {
+            await this.rbacService.assignRole(
+              targetUserId,
+              change.roleKey,
+              change.organizationId,
+              tenantContext.userId!
+            );
+          } else {
+            await this.rbacService.removeRole(targetUserId, change.roleKey, change.organizationId);
+          }
+          totalChanges++;
+        }
+      }
+
+      // Create audit log
+      const auditData = AuditLog.createForAdminAction(
+        'system',
+        tenantContext.userId!,
+        targetUserId,
+        'user_roles',
+        targetUserId,
+        'UPDATE',
+        'high',
+        undefined,
+        roleChanges,
+        {
+          operation: 'change_user_roles',
+          reason,
+          totalChanges
+        }
+      );
+
+      await this.auditLogRepository.create(auditData);
+
+      this.logger.info('Admin: User roles changed successfully', {
+        targetUserId,
+        totalChanges,
+        adminUser: tenantContext.userId
+      });
+
+      return { success: true, changes: totalChanges };
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to change user roles', {
+        error: error.message,
+        targetUserId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Remove user from system
+   */
+  async removeUserFromSystem(
+    tenantContext: TenantContext,
+    targetUserId: string,
+    reason: string,
+    deleteData: boolean = false
+  ): Promise<void> {
+    this.logger.info('Admin: Removing user from system', {
+      targetUserId,
+      reason,
+      deleteData,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      // Get user before deletion for audit
+      const user = await this.userRepository.findById(targetUserId);
+      if (!user) {
+        throw new FluxionError(ErrorCodes.NOT_FOUND, 'User not found', 404);
+      }
+
+      if (deleteData) {
+        // Hard delete - remove all user data
+        await this.userRepository.hardDelete(targetUserId);
+      } else {
+        // Soft delete - mark as deleted but keep data
+        await this.userRepository.softDelete(targetUserId);
+      }
+
+      // Create audit log
+      const auditData = AuditLog.createForAdminAction(
+        user.organizationId,
+        tenantContext.userId!,
+        targetUserId,
+        'users',
+        targetUserId,
+        'DELETE',
+        'critical',
+        user,
+        undefined,
+        {
+          operation: 'remove_user_from_system',
+          reason,
+          deleteData,
+          userEmail: user.email,
+          organizationId: user.organizationId
+        }
+      );
+
+      await this.auditLogRepository.create(auditData);
+
+      this.logger.info('Admin: User removed from system successfully', {
+        targetUserId,
+        deleteData,
+        adminUser: tenantContext.userId
+      });
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to remove user from system', {
+        error: error.message,
+        targetUserId
+      });
+      throw error;
+    }
+  }
+
+  // =============================================================================
+  // COMPREHENSIVE AUDIT LOG METHODS
+  // =============================================================================
+
+  /**
+   * Get user-specific audit logs
+   */
+  async getUserAuditLogs(
+    tenantContext: TenantContext,
+    targetUserId: string,
+    limit: number = 100,
+    offset: number = 0,
+    filters: {
+      severityLevel?: string;
+      action?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ): Promise<{ logs: ActivityLogEntry[]; total: number }> {
+    this.logger.info('Admin: Retrieving user audit logs', {
+      targetUserId,
+      limit,
+      offset,
+      filters,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      const result = await this.adminRepository.getActivityLogs(
+        limit,
+        offset,
+        { userId: targetUserId, ...filters }
+      );
+
+      this.logger.info('Admin: User audit logs retrieved successfully', {
+        targetUserId,
+        count: result.logs.length,
+        total: result.total,
+        adminUser: tenantContext.userId
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to retrieve user audit logs', {
+        error: error.message,
+        targetUserId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get organization audit logs
+   */
+  async getOrganizationAuditLogs(
+    tenantContext: TenantContext,
+    organizationId: string,
+    limit: number = 100,
+    offset: number = 0,
+    filters: {
+      severityLevel?: string;
+      action?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ): Promise<{ logs: ActivityLogEntry[]; total: number }> {
+    this.logger.info('Admin: Retrieving organization audit logs', {
+      organizationId,
+      limit,
+      offset,
+      filters,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      const result = await this.adminRepository.getActivityLogs(
+        limit,
+        offset,
+        { organizationId, ...filters }
+      );
+
+      this.logger.info('Admin: Organization audit logs retrieved successfully', {
+        organizationId,
+        count: result.logs.length,
+        total: result.total,
+        adminUser: tenantContext.userId
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to retrieve organization audit logs', {
+        error: error.message,
+        organizationId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Export audit logs
+   */
+  async exportAuditLogs(
+    tenantContext: TenantContext,
+    format: 'csv' | 'json',
+    filters: {
+      userId?: string;
+      organizationId?: string;
+      action?: string;
+      tableName?: string;
+      severityLevel?: string;
+      startDate?: Date;
+      endDate?: Date;
+      adminOnly?: boolean;
+      highRiskOnly?: boolean;
+    } = {},
+    maxRecords: number = 10000
+  ): Promise<{ data: string; recordCount: number }> {
+    this.logger.info('Admin: Exporting audit logs', {
+      format,
+      filters,
+      maxRecords,
+      adminUser: tenantContext.userId
+    });
+
+    try {
+      const result = await this.adminRepository.getActivityLogs(
+        maxRecords,
+        0,
+        filters
+      );
+
+      let data: string;
+      
+      if (format === 'csv') {
+        // Convert to CSV
+        const headers = [
+          'timestamp',
+          'action',
+          'userId',
+          'organizationId',
+          'tableName',
+          'recordId',
+          'severityLevel',
+          'ipAddress',
+          'adminAction',
+          'summary'
+        ];
+        
+        const csvRows = [
+          headers.join(','),
+          ...result.logs.map(log => [
+            log.createdAt,
+            log.action,
+            log.userId || '',
+            log.organizationId || '',
+            log.tableName || '',
+            log.recordId || '',
+            log.severityLevel || '',
+            log.ipAddress || '',
+            log.adminAction?.toString() || 'false',
+            `"${(log as any).summary?.replace(/"/g, '""') || ''}"`
+          ].join(','))
+        ];
+        
+        data = csvRows.join('\n');
+      } else {
+        // Convert to JSON
+        data = JSON.stringify(result.logs, null, 2);
+      }
+
+      // Create audit log for export
+      const auditData = AuditLog.createForSystemOperation(
+        tenantContext.userId!,
+        'export_audit_logs',
+        {
+          format,
+          filters,
+          recordCount: result.logs.length,
+          maxRecords
+        },
+        'medium',
+        {
+          operation: 'audit_log_export',
+          exportFormat: format
+        }
+      );
+
+      await this.auditLogRepository.create(auditData);
+
+      this.logger.info('Admin: Audit logs exported successfully', {
+        format,
+        recordCount: result.logs.length,
+        adminUser: tenantContext.userId
+      });
+
+      return { data, recordCount: result.logs.length };
+    } catch (error: any) {
+      this.logger.error('Admin: Failed to export audit logs', {
+        error: error.message,
+        format,
+        filters
+      });
+      throw error;
     }
   }
 }

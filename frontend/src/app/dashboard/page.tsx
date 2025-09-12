@@ -1,5 +1,5 @@
-import { DashboardOverview } from '@/components/pages/DashboardOverview';
+import { MultiOrgDashboard } from '@/components/dashboard/MultiOrgDashboard';
 
 export default function DashboardPage() {
-  return <DashboardOverview />;
+  return <MultiOrgDashboard />;
 }

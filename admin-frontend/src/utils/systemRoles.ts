@@ -71,7 +71,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<string, SystemPermission[]> = {
  * Route access control based on system roles
  */
 export const ROUTE_ACCESS_CONTROL: Record<string, string[]> = {
-  '/dashboard': ['super_admin', 'admin', 'support', 'moderator'],
+  '/dashboard': ['super_admin', 'admin', 'support'],
   '/users': ['super_admin', 'admin', 'support'],
   '/users/[id]': ['super_admin', 'admin', 'support'],
   '/organizations': ['super_admin', 'admin'],
@@ -83,7 +83,6 @@ export const ROUTE_ACCESS_CONTROL: Record<string, string[]> = {
   '/activity': ['super_admin', 'admin', 'support'],
   '/audit': ['super_admin', 'admin'],
   '/support': ['super_admin', 'support'],
-  '/moderation': ['super_admin', 'moderator'],
 }
 
 /**
@@ -92,12 +91,14 @@ export const ROUTE_ACCESS_CONTROL: Record<string, string[]> = {
 export function hasSystemAccess(user: AdminUser | any | null): boolean {
   if (!user) return false
   
-  // Handle both AdminUser and SimpleAdminUser structures
+  // Handle both array format (legacy) and single role format (new)
   const systemRoles = user.system_roles || user.systemRoles || []
+  const singleRole = user.role
   
   return (
     user.has_system_access ||
-    (systemRoles && systemRoles.length > 0)
+    (systemRoles && systemRoles.length > 0) ||
+    (singleRole && ['super_admin', 'admin', 'support'].includes(singleRole))
   )
 }
 
@@ -107,10 +108,17 @@ export function hasSystemAccess(user: AdminUser | any | null): boolean {
 export function hasSystemRole(user: AdminUser | any | null, role: string): boolean {
   if (!user || !hasSystemAccess(user)) return false
   
-  // Handle both AdminUser and SimpleAdminUser structures
+  // Handle both array format (legacy) and single role format (new)
   const systemRoles = user.system_roles || user.systemRoles || []
+  const singleRole = user.role
   
-  return systemRoles.includes(role) || false
+  // Check array format first (legacy)
+  if (systemRoles.length > 0) {
+    return systemRoles.includes(role)
+  }
+  
+  // Check single role format (new)
+  return singleRole === role
 }
 
 /**
@@ -128,16 +136,31 @@ export function hasAnySystemRole(user: AdminUser | any | null, roles: string[]):
 export function hasSystemPermission(user: AdminUser | any | null, permission: SystemPermission): boolean {
   if (!user || !hasSystemAccess(user)) return false
   
-  // Handle both AdminUser and SimpleAdminUser structures
+  // Handle both array format (legacy) and single role format (new)
   const userRoles = user.system_roles || user.systemRoles || []
+  const singleRole = user.role
   
-  // System super admin has all permissions
-  if (userRoles.includes('super_admin')) return true
+  // Check array format first (legacy)
+  if (userRoles.length > 0) {
+    // System super admin has all permissions
+    if (userRoles.includes('super_admin')) return true
+    
+    // Check if any of user's roles have the required permission
+    return userRoles.some(role => 
+      SYSTEM_ROLE_PERMISSIONS[role]?.includes(permission)
+    )
+  }
   
-  // Check if any of user's roles have the required permission
-  return userRoles.some(role => 
-    SYSTEM_ROLE_PERMISSIONS[role]?.includes(permission)
-  )
+  // Check single role format (new)
+  if (singleRole) {
+    // System super admin has all permissions
+    if (singleRole === 'super_admin') return true
+    
+    // Check if the user's single role has the required permission
+    return SYSTEM_ROLE_PERMISSIONS[singleRole]?.includes(permission) || false
+  }
+  
+  return false
 }
 
 /**
@@ -146,8 +169,16 @@ export function hasSystemPermission(user: AdminUser | any | null, permission: Sy
 export function getHighestSystemRole(user: AdminUser | any | null): string | null {
   if (!user || !hasSystemAccess(user)) return null
   
-  // Handle both AdminUser and SimpleAdminUser structures
+  // Handle both array format (legacy) and single role format (new)
   const userRoles = user.system_roles || user.systemRoles || []
+  const singleRole = user.role
+  
+  // If single role format, return that role
+  if (singleRole && (!userRoles || userRoles.length === 0)) {
+    return singleRole
+  }
+  
+  // If array format, find highest role
   if (userRoles.length === 0) return null
   
   return userRoles.reduce((highest, current) => {
@@ -215,15 +246,24 @@ export function canAccessRoute(user: AdminUser | any | null, route: string): boo
 export function getUserSystemPermissions(user: AdminUser | any | null): SystemPermission[] {
   if (!user || !hasSystemAccess(user)) return []
   
-  // Handle both AdminUser and SimpleAdminUser structures
+  // Handle both array format (legacy) and single role format (new)
   const userRoles = user.system_roles || user.systemRoles || []
+  const singleRole = user.role
   const permissions = new Set<SystemPermission>()
   
-  userRoles.forEach(role => {
-    SYSTEM_ROLE_PERMISSIONS[role]?.forEach(permission => {
+  // Check array format first (legacy)
+  if (userRoles.length > 0) {
+    userRoles.forEach(role => {
+      SYSTEM_ROLE_PERMISSIONS[role]?.forEach(permission => {
+        permissions.add(permission)
+      })
+    })
+  } else if (singleRole) {
+    // Check single role format (new)
+    SYSTEM_ROLE_PERMISSIONS[singleRole]?.forEach(permission => {
       permissions.add(permission)
     })
-  })
+  }
   
   return Array.from(permissions)
 }
@@ -234,11 +274,22 @@ export function getUserSystemPermissions(user: AdminUser | any | null): SystemPe
 export function hasMinimumSystemRole(user: AdminUser | any | null, minimumRole: string): boolean {
   if (!user || !hasSystemAccess(user)) return false
   
-  // Handle both AdminUser and SimpleAdminUser structures
+  // Handle both array format (legacy) and single role format (new)
   const userRoles = user.system_roles || user.systemRoles || []
+  const singleRole = user.role
   const minimumLevel = SYSTEM_ROLE_HIERARCHY[minimumRole]
   
-  return userRoles.some(role => SYSTEM_ROLE_HIERARCHY[role] >= minimumLevel)
+  // Check array format first (legacy)
+  if (userRoles.length > 0) {
+    return userRoles.some(role => SYSTEM_ROLE_HIERARCHY[role] >= minimumLevel)
+  }
+  
+  // Check single role format (new)
+  if (singleRole) {
+    return SYSTEM_ROLE_HIERARCHY[singleRole] >= minimumLevel
+  }
+  
+  return false
 }
 
 /**

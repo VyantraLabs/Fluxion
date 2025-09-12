@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast';
 import { ConfigProvider } from '@/contexts/ConfigContext';
 import { Web3Provider } from '@/contexts/Web3Context';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { OrganizationProvider } from '@/contexts/OrganizationContext';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { OnboardingManager } from '@/components/common/OnboardingManager';
 import { config } from '@/utils/config';
@@ -39,7 +40,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <ConfigProvider>
           <Web3Provider>
             <AuthProvider>
-            {children}
+              <OrganizationProvider>
+                {children}
             
             {/* Onboarding Manager */}
             <OnboardingManager />
@@ -94,9 +96,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
             {config.isDevelopment && (
               <ReactQueryDevtools 
                 initialIsOpen={false}
-                position="bottom-right" as any
+                position={"bottom-right" as any}
               />
             )}
+              </OrganizationProvider>
             </AuthProvider>
           </Web3Provider>
         </ConfigProvider>

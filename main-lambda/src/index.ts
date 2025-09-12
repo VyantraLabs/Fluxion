@@ -27,8 +27,34 @@ import { adminRoutes } from '@/modules/admin/handlers';
 import { notificationRoutes } from '@/modules/notifications/handlers';
 import { jobRoutes } from '@/modules/jobs/handlers';
 import { reminderRoutes } from '@/modules/reminders/handlers';
+import { dashboardRoutes } from '@/modules/dashboard/handlers';
+
+// Initialize audit event system
+import { auditConsumerRegistry } from '@/shared/services/audit-consumers';
 
 const logger = new Logger('MainLambda');
+
+// Initialize audit system on startup
+let auditInitialized = false;
+const initializeAuditSystem = async () => {
+  if (!auditInitialized) {
+    try {
+      await auditConsumerRegistry.initialize();
+      auditInitialized = true;
+      logger.info('Audit event system initialized successfully');
+    } catch (error: any) {
+      logger.error('Failed to initialize audit event system', {
+        error: error.message
+      });
+      // Don't fail startup for audit system issues
+    }
+  }
+};
+
+// Initialize on module load (for Lambda cold starts)
+initializeAuditSystem().catch(error => {
+  logger.error('Background audit system initialization failed', { error: error.message });
+});
 
 // Create Express app
 const app = express();
@@ -153,6 +179,7 @@ app.use('/admin', adminRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/jobs', jobRoutes);
 app.use('/reminders', reminderRoutes);
+app.use('/dashboard', dashboardRoutes);
 
 // API info endpoint
 app.get('/', (req, res) => {
@@ -237,6 +264,17 @@ app.get('/', (req, res) => {
           'POST /reminders/invoice/{invoiceId}/setup - Setup default reminders',
           'POST /reminders/bulk/create - Create bulk reminders',
           'GET /reminders/stats - Get reminder statistics'
+        ]
+      },
+      dashboard: {
+        base: '/dashboard',
+        description: 'Role-based dashboard data and statistics',
+        methods: ['GET'],
+        headers: ['X-Client-Type: admin-frontend|frontend'],
+        routes: [
+          'GET /dashboard - Get role-based dashboard data',
+          'GET /dashboard/health - Get system health status',
+          'GET /dashboard/quick-actions - Get available quick actions'
         ]
       }
     },
@@ -325,13 +363,25 @@ export const handler = serverless(app, {
 // Export app for local development (local.ts will handle starting the server)
 
 // Graceful shutdown handling
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
+  try {
+    await auditConsumerRegistry.shutdown();
+    logger.info('Audit system shut down successfully');
+  } catch (error: any) {
+    logger.error('Failed to shutdown audit system', { error: error.message });
+  }
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
+  try {
+    await auditConsumerRegistry.shutdown();
+    logger.info('Audit system shut down successfully');
+  } catch (error: any) {
+    logger.error('Failed to shutdown audit system', { error: error.message });
+  }
   process.exit(0);
 });
 

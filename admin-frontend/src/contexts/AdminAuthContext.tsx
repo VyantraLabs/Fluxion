@@ -4,14 +4,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { ethers } from 'ethers'
 import { adminAuthStorage, adminUserStorage, adminWalletStorage } from '@/utils/storage'
 
-// Simple user interface matching backend response
+// Simple user interface matching new backend response (single role)
 interface SimpleAdminUser {
   id: string
   wallet_address: string
   name?: string
   email?: string
-  systemRoles: string[]
-  organizationRoles: string[]
+  role: string  // Single role from backend
   created_at: string
   updated_at: string
 }
@@ -21,7 +20,8 @@ interface AdminAuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   hasSystemAccess: boolean
-  systemRoles: string[]
+  role: string | null  // Single role instead of array
+  systemRoles: string[]  // Array for backwards compatibility with existing components
   login: (walletAddress: string) => Promise<void>
   logout: () => void
   isSuperAdmin: boolean
@@ -61,13 +61,14 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
   const [user, setUser] = useState<SimpleAdminUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Simple derived properties with null safety
+  // Simple derived properties with null safety for single role
   const isAuthenticated = !!user
-  const systemRoles: string[] = user?.systemRoles || []
-  const hasSystemAccess = systemRoles.length > 0
-  const isSuperAdmin = systemRoles.includes('super_admin')
-  const isAdmin = systemRoles.includes('admin')
-  const isSupport = systemRoles.includes('support')
+  const role: string | null = user?.role || null
+  const systemRoles: string[] = role ? [role] : []  // Convert single role to array for backwards compatibility
+  const hasSystemAccess = !!role
+  const isSuperAdmin = role === 'super_admin'
+  const isAdmin = role === 'admin'
+  const isSupport = role === 'support'
 
   // Initialize auth state from localStorage
   useEffect(() => {
@@ -88,31 +89,29 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
           const jwtPayload = decodeJWT(token)
           console.log('🔍 Admin Auth: JWT payload:', jwtPayload)
           
-          if (jwtPayload && jwtPayload.system_roles) {
+          if (jwtPayload && jwtPayload.role) {
             const enhancedUser: SimpleAdminUser = {
               ...userData,
-              systemRoles: jwtPayload.system_roles || [],
-              organizationRoles: jwtPayload.organization_roles || []
+              role: jwtPayload.role  // Single role from JWT
             }
             
-            console.log('🔍 Admin Auth: Enhanced user:', {
+            console.log('🔍 Admin Auth: Enhanced user with single role:', {
               id: enhancedUser.id,
               wallet_address: enhancedUser.wallet_address,
-              systemRoles: enhancedUser.systemRoles,
-              organizationRoles: enhancedUser.organizationRoles
+              role: enhancedUser.role
             })
             
-            // Check if user has any system roles
-            if (enhancedUser.systemRoles.length > 0) {
+            // Check if user has a valid system role
+            if (enhancedUser.role && ['super_admin', 'admin', 'support'].includes(enhancedUser.role)) {
               setUser(enhancedUser)
-              console.log('✅ Admin Auth: Authentication initialized successfully')
+              console.log('✅ Admin Auth: Authentication initialized successfully with role:', enhancedUser.role)
             } else {
-              console.log('❌ Admin Auth: User has no system roles, clearing auth')
+              console.log('❌ Admin Auth: Invalid system role, clearing auth:', enhancedUser.role)
               adminAuthStorage.removeToken()
               adminUserStorage.removeProfile()
             }
           } else {
-            console.log('❌ Admin Auth: Invalid token, clearing auth')
+            console.log('❌ Admin Auth: No role in JWT token, clearing auth')
             adminAuthStorage.removeToken()
             adminUserStorage.removeProfile()
           }
@@ -137,24 +136,13 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
       setIsLoading(true)
       console.log('🔄 Admin Auth: Starting login for wallet:', walletAddress)
 
-      // Check if wallet is available
-      if (typeof window.ethereum === 'undefined') {
-        throw new Error('Please install MetaMask or another Web3 wallet')
-      }
-
-      // Request account access
-      console.log('🔄 Admin Auth: Requesting account access...')
-      await window.ethereum.request({ method: 'eth_requestAccounts' })
+      // Use chain-agnostic wallet connection with ethers and target address
+      const { connectWallet, signMessage } = await import('@/utils/walletConnection')
       
-      const provider = new ethers.BrowserProvider(window.ethereum)
-      const signer = await provider.getSigner()
+      console.log('🔄 Admin Auth: Connecting to specific wallet address:', walletAddress)
+      const connection = await connectWallet(walletAddress)
       
-      // Verify wallet address matches
-      const signerAddress = await signer.getAddress()
-      console.log('🔍 Admin Auth: Signer address:', signerAddress)
-      if (signerAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-        throw new Error('Wallet address mismatch')
-      }
+      console.log(`✅ Admin Auth: Connected on ${connection.chainName} (Chain ID: ${connection.chainId})`)
 
       // Step 1: Get message to sign from admin endpoint
       console.log('🔄 Admin Auth: Getting auth message...')
@@ -180,9 +168,9 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
 
       const message = messageData.data.message
 
-      // Step 2: Sign the message
+      // Step 2: Sign the message using ethers
       console.log('🔄 Admin Auth: Signing message...')
-      const signature = await signer.signMessage(message)
+      const signature = await signMessage(message, connection.signer)
       console.log('🔍 Admin Auth: Message signed successfully')
 
       // Step 3: Verify signature with admin endpoint
@@ -223,35 +211,34 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
         throw new Error('Invalid authentication token')
       }
 
-      // Validate that JWT has the required system roles property
-      if (!jwtPayload.system_roles) {
-        console.error('❌ Admin Auth: JWT payload missing system_roles property:', jwtPayload)
-        throw new Error('Invalid authentication token: missing system roles')
+      // Validate that JWT has the required role property
+      if (!jwtPayload.role) {
+        console.error('❌ Admin Auth: JWT payload missing role property:', jwtPayload)
+        throw new Error('Invalid authentication token: missing role')
       }
 
-      // Create simplified user object
+      // Create simplified user object with single role
       const simpleUser: SimpleAdminUser = {
         id: authenticatedUser.id,
         wallet_address: authenticatedUser.wallet_address,
         name: authenticatedUser.name,
         email: authenticatedUser.email,
-        systemRoles: jwtPayload.system_roles || [],
-        organizationRoles: jwtPayload.organization_roles || [],
+        role: jwtPayload.role,  // Single role from JWT
         created_at: authenticatedUser.created_at,
         updated_at: authenticatedUser.updated_at
       }
 
-      console.log('🔍 Admin Auth: Simple user object:', simpleUser)
+      console.log('🔍 Admin Auth: Simple user object with single role:', simpleUser)
 
-      // Check if user has system access
-      const hasValidSystemRoles = simpleUser.systemRoles && simpleUser.systemRoles.length > 0
-      console.log('🔍 Admin Auth: System roles check:', {
-        systemRoles: simpleUser.systemRoles,
-        hasValidSystemRoles
+      // Check if user has valid system access
+      const hasValidSystemRole = simpleUser.role && ['super_admin', 'admin', 'support'].includes(simpleUser.role)
+      console.log('🔍 Admin Auth: Single role check:', {
+        role: simpleUser.role,
+        hasValidSystemRole
       })
 
-      if (!hasValidSystemRoles) {
-        console.error('❌ Admin Auth: Access denied - no system roles found')
+      if (!hasValidSystemRole) {
+        console.error('❌ Admin Auth: Access denied - invalid system role:', simpleUser.role)
         throw new Error('Access denied: System administrator privileges required')
       }
 
@@ -267,10 +254,24 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
       setUser(simpleUser)
       
       console.log('✅ Admin Auth: Login completed successfully!')
-      console.log('✅ Admin Auth: User roles:', simpleUser.systemRoles)
+      console.log('✅ Admin Auth: User role:', simpleUser.role)
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Admin Auth: Login error:', error)
+      
+      // Handle specific wallet connection errors
+      if (error.code === 4001) {
+        console.debug('💡 Admin Auth: User rejected the connection request')
+        const userError = new Error('Connection cancelled by user')
+        ;(userError as any).code = 'USER_REJECTED'
+        throw userError
+      } else if (error.code === -32002) {
+        console.debug('💡 Admin Auth: Request already pending')
+        const pendingError = new Error('Connection request already pending. Please check your MetaMask extension.')
+        ;(pendingError as any).code = 'REQUEST_PENDING'
+        throw pendingError
+      }
+      
       throw error
     } finally {
       setIsLoading(false)
@@ -296,7 +297,8 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
     isAuthenticated,
     isLoading,
     hasSystemAccess,
-    systemRoles,
+    role,  // Single role instead of array
+    systemRoles,  // Array for backwards compatibility
     login,
     logout,
     isSuperAdmin,

@@ -237,13 +237,42 @@ export const adminMigrationUtils = {
     }
   },
 
+  clearOldRoleArrayData: (): void => {
+    // Clear cached user data that may have old role array format
+    try {
+      const currentUserData = adminUserStorage.getProfile();
+      
+      if (currentUserData && (currentUserData.system_roles || currentUserData.organization_roles)) {
+        console.log('🔄 Admin Migration: Clearing old role array format data');
+        console.log('Old data format:', {
+          hasSystemRoles: !!currentUserData.system_roles,
+          hasOrgRoles: !!currentUserData.organization_roles,
+          systemRoles: currentUserData.system_roles,
+          orgRoles: currentUserData.organization_roles
+        });
+        
+        // Clear the old cached user data to force re-fetch from JWT
+        adminUserStorage.removeProfile();
+        console.log('✅ Admin Migration: Old role array data cleared');
+      }
+    } catch (error) {
+      console.error('❌ Error clearing old role array data:', error);
+    }
+  },
+
   migrateIfNeeded: (): void => {
     const currentVersion = adminMigrationUtils.getCurrentVersion();
-    const targetVersion = 2;
+    const targetVersion = 3; // Increment version to handle role array migration
 
     if (currentVersion < targetVersion) {
       console.log(`Migrating admin storage from version ${currentVersion} to ${targetVersion}`);
       adminMigrationUtils.migrateFromOldKeys();
+      
+      // Clear old role array data
+      adminMigrationUtils.clearOldRoleArrayData();
+      
+      // Set new version
+      adminMigrationUtils.setVersion(targetVersion);
     }
   },
 };

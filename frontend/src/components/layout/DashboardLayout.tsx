@@ -16,9 +16,13 @@ import {
   Bell,
   Layout,
   Users,
+  Activity,
+  Building2,
 } from 'lucide-react';
 import { WalletConnectButton } from '@/components/web3/WalletConnectButton';
+import { CompactOrganizationSwitcher } from '@/components/common/OrganizationSwitcher';
 import { useWalletAuth } from '@/contexts/AuthContext';
+import { useUserPermissions, useOrganization } from '@/contexts/OrganizationContext';
 import { cn } from '@/utils/helpers';
 import { canUserManageUsers } from '@/utils/permissions';
 
@@ -28,17 +32,41 @@ interface NavigationItem {
   icon: React.ComponentType<{ className?: string }>;
   current?: boolean;
   requiresPermission?: (user: any) => boolean;
+  badge?: number;
+  isMultiOrg?: boolean;
+  requiresOrganization?: boolean; // New property for organization-dependent items
 }
 
-const navigation: NavigationItem[] = [
+const getNavigation = (permissions: any): NavigationItem[] => [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
-  { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
-  { name: 'Templates', href: '/dashboard/templates', icon: Layout },
-  { name: 'Reminders', href: '/dashboard/reminders', icon: Bell },
-  { name: 'Payments', href: '/dashboard/payments', icon: CreditCard },
-  { name: 'Users', href: '/dashboard/users', icon: Users, requiresPermission: canUserManageUsers },
-  { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
-  { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+  { 
+    name: 'Organizations', 
+    href: '/dashboard/organizations', 
+    icon: Building2,
+    requiresPermission: (user: any) => permissions?.canViewAllOrganizations || false
+  },
+  { name: 'Invoices', href: '/dashboard/invoices', icon: FileText, requiresOrganization: true },
+  { name: 'Templates', href: '/dashboard/templates', icon: Layout, requiresOrganization: true },
+  { name: 'Reminders', href: '/dashboard/reminders', icon: Bell, requiresOrganization: true },
+  { name: 'Payments', href: '/dashboard/payments', icon: CreditCard, requiresOrganization: true },
+  { 
+    name: 'Users', 
+    href: '/dashboard/users', 
+    icon: Users, 
+    requiresPermission: canUserManageUsers,
+    requiresOrganization: true,
+    isMultiOrg: true,
+  },
+  {
+    name: 'Activity',
+    href: '/dashboard/activity',
+    icon: Activity,
+    requiresPermission: (user: any) => permissions?.canViewActivity || false,
+    requiresOrganization: true,
+    isMultiOrg: true,
+  },
+  { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3, requiresOrganization: true },
+  { name: 'Settings', href: '/dashboard/settings', icon: Settings, requiresOrganization: true },
 ];
 
 interface DashboardLayoutProps {
@@ -49,6 +77,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const { user, isAuthenticated } = useWalletAuth();
+  const permissions = useUserPermissions();
+  const { state: orgState } = useOrganization();
 
   // If not authenticated, redirect to landing page
   if (!isAuthenticated) {
@@ -71,18 +101,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     );
   }
 
-  // Filter navigation items based on user permissions and add current property
+  // Get navigation items with permissions check
+  const navigation = getNavigation(permissions);
+  
+  // Filter navigation items based on user permissions and organization selection
   const navigationWithCurrent = navigation
     .filter((item) => {
+      // Check if item requires organization selection
+      if (item.requiresOrganization && !orgState.activeOrganization) {
+        return false;
+      }
+      
+      // Check permissions
       if (item.requiresPermission) {
         const hasPermission = item.requiresPermission(user);
-        console.debug(`Navigation item "${item.name}": hasPermission=${hasPermission}`, {
-          user: user ? {
-            id: user.id,
-            system_roles: user.system_roles,
-            organization_roles: user.organization_roles
-          } : null
-        });
+        // Single role system permission check completed
         return hasPermission;
       }
       return true;
@@ -92,7 +125,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       current: pathname === item.href || pathname.startsWith(`${item.href}/`),
     }));
 
-  console.debug('Filtered navigation items:', navigationWithCurrent.map(item => item.name));
+  // Navigation items filtered based on user permissions
 
   return (
     <div className="min-h-screen bg-secondary-50">
@@ -119,7 +152,25 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                 <X className="h-6 w-6" />
               </button>
             </div>
+            
+            {/* Current view indicator for mobile */}
+            <div className="px-4 py-2 bg-secondary-50 border-b border-secondary-200">
+              <div className="text-xs text-secondary-500 text-center">
+                {orgState.isGlobalView ? 'Global View' : orgState.activeOrganization?.name + ' View'}
+              </div>
+            </div>
+            
             <div className="flex flex-1 flex-col overflow-y-auto">
+              {/* Organization Switcher */}
+              {permissions && (
+                <div className="px-4 py-4 border-b border-secondary-200">
+                  <CompactOrganizationSwitcher 
+                    showAllOption={permissions?.canViewAllOrganizations || false}
+                    className="w-full"
+                  />
+                </div>
+              )}
+              
               <nav className="flex-1 space-y-1 px-2 py-4">
                 {navigationWithCurrent.map((item) => (
                   <Link
@@ -139,7 +190,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                         item.current ? 'text-primary-500' : 'text-secondary-400 group-hover:text-secondary-500'
                       )}
                     />
-                    {item.name}
+                    <span className="flex-1">{item.name}</span>
+                    {item.isMultiOrg && permissions?.canViewAllOrganizations && (
+                      <Building2 className="w-3 h-3 text-gray-400" />
+                    )}
+                    {item.badge && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-900">
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </nav>
@@ -158,8 +217,23 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               </div>
               <span className="text-xl font-bold text-secondary-900">Fluxion</span>
             </div>
+            
+            {/* Current view indicator */}
+            <div className="mt-2 text-xs text-secondary-500 text-center">
+              {orgState.isGlobalView ? 'Global View' : orgState.activeOrganization?.name + ' View'}
+            </div>
           </div>
           <div className="flex flex-1 flex-col overflow-y-auto">
+            {/* Organization Switcher */}
+            {permissions && (
+              <div className="px-4 py-4 border-b border-secondary-200">
+                <CompactOrganizationSwitcher 
+                  showAllOption={permissions?.canViewAllOrganizations || false}
+                  className="w-full"
+                />
+              </div>
+            )}
+            
             <nav className="flex-1 space-y-1 px-2 py-4">
               {navigationWithCurrent.map((item) => (
                 <Link
@@ -178,7 +252,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                       item.current ? 'text-primary-500' : 'text-secondary-400 group-hover:text-secondary-500'
                     )}
                   />
-                  {item.name}
+                  <span className="flex-1">{item.name}</span>
+                  {item.isMultiOrg && permissions?.canViewAllOrganizations && (
+                    <Building2 className="w-3 h-3 text-gray-400" />
+                  )}
+                  {item.badge && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-900">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               ))}
             </nav>
@@ -213,7 +295,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             <div className="flex flex-1">
               {/* Search could go here */}
             </div>
-            <div className="ml-4 flex items-center md:ml-6">
+            <div className="ml-4 flex items-center space-x-4 md:ml-6">
+              {/* Desktop Organization Switcher */}
+              <div className="hidden sm:block">
+                {permissions && (
+                  <CompactOrganizationSwitcher 
+                    showAllOption={permissions?.canViewAllOrganizations || false}
+                  />
+                )}
+              </div>
+              
               <WalletConnectButton showAddress />
             </div>
           </div>

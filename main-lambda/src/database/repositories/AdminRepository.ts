@@ -799,7 +799,11 @@ export class AdminRepository {
     return actionMap[action] || action;
   }
 
-  private formatDisplayTableName(tableName: string): string {
+  private formatDisplayTableName(tableName: string | undefined | null): string {
+    if (!tableName || typeof tableName !== 'string') {
+      return 'Unknown';
+    }
+    
     return tableName
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))

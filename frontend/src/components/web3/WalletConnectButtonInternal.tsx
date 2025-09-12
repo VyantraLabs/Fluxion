@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Wallet, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
 import { useWalletAuth } from '@/contexts/AuthContext';
 import { formatWalletAddress } from '@/utils/format';
-import { isMetaMaskInstalled } from '@/utils/web3';
 import { ButtonVariant, ButtonSize } from '@/types/common';
+import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
 interface WalletConnectButtonProps {
@@ -36,18 +36,48 @@ export const WalletConnectButtonInternal: React.FC<WalletConnectButtonProps> = (
   } = useWalletAuth();
 
   const [showDropdown, setShowDropdown] = useState(false);
-  const [hasMetaMask, setHasMetaMask] = useState(true); // Default to true to prevent initial flash
+  const [hasMetaMask, setHasMetaMask] = useState(true);
 
   // Client-side detection of MetaMask
   useEffect(() => {
-    setHasMetaMask(isMetaMaskInstalled());
+    const checkMetaMask = () => {
+      return typeof window !== 'undefined' && typeof window.ethereum !== 'undefined';
+    };
+    setHasMetaMask(checkMetaMask());
   }, []);
 
   const handleConnect = async () => {
+    if (!hasMetaMask) {
+      toast.error('Please install MetaMask to connect your wallet');
+      return;
+    }
+
     try {
       await connectAndAuthenticate();
-    } catch (error) {
+      toast.success('Wallet connected and authenticated successfully!');
+    } catch (error: any) {
       console.error('Connection failed:', error);
+      
+      let errorMessage = 'Failed to connect wallet';
+      let showError = true;
+      
+      // Handle specific error codes
+      if (error.code === 'USER_REJECTED' || error.code === 4001 || error.message?.includes('rejected') || error.message?.includes('cancelled')) {
+        errorMessage = 'Connection cancelled by user';
+        showError = false; // Don't show error toast for user cancellation
+      } else if (error.code === 'REQUEST_PENDING' || error.code === -32002) {
+        errorMessage = 'Connection request already pending. Please check your MetaMask extension.';
+      } else if (error.code === 'UNAUTHORIZED') {
+        errorMessage = 'Please unlock your wallet and try again';
+      } else if (error.message?.includes('MetaMask') || error.message?.includes('install')) {
+        errorMessage = 'Please install MetaMask to connect your wallet';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      if (showError) {
+        toast.error(errorMessage);
+      }
     }
   };
 
@@ -86,13 +116,13 @@ export const WalletConnectButtonInternal: React.FC<WalletConnectButtonProps> = (
   // If MetaMask is not installed
   if (!hasMetaMask) {
     return (
-      <div className="relative">
-        <button className={buttonClasses} disabled>
+      <div className="relative group">
+        <button className={clsx(buttonClasses, 'cursor-not-allowed')} disabled>
           <AlertCircle className="w-4 h-4 mr-2" />
           Install MetaMask
         </button>
         
-        <div className="absolute top-full mt-2 left-0 bg-white border border-secondary-200 rounded-lg shadow-lg p-3 z-50">
+        <div className="absolute top-full mt-2 left-0 bg-white border border-secondary-200 rounded-lg shadow-lg p-3 z-50 opacity-0 group-hover:opacity-100 transition-opacity">
           <p className="text-sm text-secondary-600 mb-2">
             MetaMask is required to use Fluxion
           </p>

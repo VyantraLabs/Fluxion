@@ -40,6 +40,7 @@ class SimplifiedAdminApi {
     
     return {
       'Content-Type': 'application/json',
+      'X-Client-Type': 'admin-frontend',
       ...(token && { 'Authorization': `Bearer ${token}` }),
     }
   }
@@ -184,6 +185,163 @@ class SimplifiedAdminApi {
 
   async getOrganization(id: string): Promise<ApiResponse<any>> {
     return this.request(`/organizations/${id}`)
+  }
+
+  async getOrganizationUsers(id: string, params?: any): Promise<ApiResponse<any>> {
+    const searchParams = new URLSearchParams()
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          searchParams.append(key, String(value))
+        }
+      })
+    }
+
+    const query = searchParams.toString()
+    const endpoint = `/organizations/${id}/users${query ? `?${query}` : ''}`
+    
+    return this.request(endpoint)
+  }
+
+  async getOrganizationActivity(id: string, params?: any): Promise<ApiResponse<any>> {
+    const searchParams = new URLSearchParams()
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          searchParams.append(key, String(value))
+        }
+      })
+    }
+
+    const query = searchParams.toString()
+    const endpoint = `/organizations/${id}/activity${query ? `?${query}` : ''}`
+    
+    return this.request(endpoint)
+  }
+
+  // === USER MANAGEMENT ENHANCED METHODS ===
+  
+  async getUser(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/users/${id}`)
+  }
+
+  async getUserActivity(id: string, params?: any): Promise<ApiResponse<any>> {
+    const searchParams = new URLSearchParams()
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          searchParams.append(key, String(value))
+        }
+      })
+    }
+
+    const query = searchParams.toString()
+    const endpoint = `/users/${id}/activity${query ? `?${query}` : ''}`
+    
+    return this.request(endpoint)
+  }
+
+  async updateUserAdminStatus(id: string, data: {
+    isAdmin: boolean
+    isSuperAdmin?: boolean
+    reason?: string
+  }): Promise<ApiResponse<any>> {
+    return this.request(`/users/${id}/admin-status`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async updateUserRoles(userId: string, organizationId: string, roles: string[]): Promise<ApiResponse<any>> {
+    return this.request(`/users/${userId}/roles`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        organizationId,
+        roles
+      })
+    })
+  }
+
+  async removeUserFromOrganization(userId: string, organizationId: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.request(`/organizations/${organizationId}/users/${userId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason })
+    })
+  }
+
+  // === AUDIT LOG METHODS ===
+  
+  async getActivityLogs(params?: any): Promise<ApiResponse<any>> {
+    const searchParams = new URLSearchParams()
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          searchParams.append(key, String(value))
+        }
+      })
+    }
+
+    const query = searchParams.toString()
+    const endpoint = `/activity${query ? `?${query}` : ''}`
+    
+    return this.request(endpoint)
+  }
+
+  // === ROLE MANAGEMENT METHODS ===
+  
+  async getAvailableRoles(): Promise<ApiResponse<any>> {
+    return this.request('/roles')
+  }
+
+  async getUserRoles(userId: string, organizationId?: string): Promise<ApiResponse<any>> {
+    const params = organizationId ? `?organizationId=${organizationId}` : ''
+    return this.request(`/users/${userId}/roles${params}`)
+  }
+
+  // === SYSTEM SETTINGS METHODS ===
+  
+  async getSystemSettings(params?: any): Promise<ApiResponse<any>> {
+    const searchParams = new URLSearchParams()
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          searchParams.append(key, String(value))
+        }
+      })
+    }
+
+    const query = searchParams.toString()
+    const endpoint = `/settings${query ? `?${query}` : ''}`
+    
+    return this.request(endpoint)
+  }
+
+  async updateSystemSetting(key: string, data: {
+    value: any
+    description?: string
+  }): Promise<ApiResponse<any>> {
+    return this.request(`/settings/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  // === MAINTENANCE METHODS ===
+  
+  async toggleMaintenanceMode(enabled: boolean, message?: string, estimatedDuration?: number): Promise<ApiResponse<any>> {
+    return this.request('/system/maintenance', {
+      method: 'POST',
+      body: JSON.stringify({
+        enabled,
+        message,
+        estimatedDuration
+      })
+    })
   }
 
   // === DEBUG METHOD ===

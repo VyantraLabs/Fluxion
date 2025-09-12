@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import { getDatabase } from '@/shared/database/client';
 import { getBlockchainService } from '@/shared/blockchain/client';
 import { Logger } from '@/shared/utils/logger';
+import { auditEventService } from '@/shared/services/audit-event.service';
+import { getDefaultRole, Role, isValidRole } from '@/shared/utils/role-hierarchy';
 import { 
   createNotFoundError, 
   createUnauthorizedError, 
@@ -131,23 +133,33 @@ export class UserService {
         throw createAuthenticationError('Authentication system configuration error');
       }
 
-      // Step 5: RBAC Role Resolution (NON-CRITICAL - Graceful degradation)
-      // Start with the user's database role, fallback to 'member' if empty
-      let userRole = userRecord.role || 'member';
+      // Step 5: Role Resolution - Use single role from RBAC or database
+      let userRole: Role = getDefaultRole(); // Start with default role
       try {
         const { RBACService } = await import('@/shared/services/rbac.service');
         const { AppDataSource } = await import('@/database/data-source');
         const rbacService = new RBACService(AppDataSource);
         
+        // Get user's active role from RBAC system
         const userRoles = await rbacService.getUserRoles(userRecord.id, userRecord.tenant_id);
         if (userRoles && userRoles.length > 0) {
-          // RBAC role overrides database role when present
-          const sortedRoles = userRoles.sort((a, b) => (b.role?.priority || 0) - (a.role?.priority || 0));
-          const primaryRole = sortedRoles[0];
-          userRole = primaryRole.role?.key || userRole; // Keep database role if RBAC key is empty
+          // Find the highest priority role that's still active
+          const activeRoles = userRoles.filter(ur => !ur.isExpired);
+          if (activeRoles.length > 0) {
+            const sortedRoles = activeRoles.sort((a, b) => (b.role?.priority || 0) - (a.role?.priority || 0));
+            const primaryRole = sortedRoles[0];
+            if (primaryRole.role?.key && isValidRole(primaryRole.role.key)) {
+              userRole = primaryRole.role.key as Role;
+            }
+          }
         }
         
-        this.logger.info('RBAC role resolved', { 
+        // Fallback to database role if RBAC doesn't have a valid role
+        if (userRole === getDefaultRole() && userRecord.role && isValidRole(userRecord.role)) {
+          userRole = userRecord.role as Role;
+        }
+        
+        this.logger.info('User role resolved', { 
           user_id: userRecord.id,
           database_role: userRecord.role,
           final_role: userRole,
@@ -155,17 +167,16 @@ export class UserService {
           request_id: requestId
         });
       } catch (rbacError: any) {
-        this.logger.warn('RBAC role resolution failed, using default', { 
+        this.logger.warn('Role resolution failed, using default', { 
           user_id: userRecord.id,
           error: rbacError.message,
+          fallback_role: userRole,
           request_id: requestId
         });
         // Continue with default role - this is non-critical
       }
 
-      // Step 6: Admin Flags Resolution (NON-CRITICAL - Graceful degradation)
-      let isAdmin = false;
-      let isSuperAdmin = false;
+      // Step 6: Update last login timestamp (NON-CRITICAL)
       let lastLoginUpdated = false;
       
       try {
@@ -174,10 +185,6 @@ export class UserService {
         const typeormUser = await userRepo.findById({ tenantId: userRecord.tenant_id }, userRecord.id);
         
         if (typeormUser) {
-          isAdmin = typeormUser.isAdmin || userRecord.is_admin || false;
-          isSuperAdmin = typeormUser.isSuperAdmin || userRecord.is_super_admin || false;
-          
-          // Try to update last login (NON-CRITICAL)
           try {
             typeormUser.lastLoginAt = new Date();
             await userRepo.save(typeormUser);
@@ -197,44 +204,40 @@ export class UserService {
           }
         }
       } catch (repoError: any) {
-        this.logger.warn('Failed to resolve admin flags', {
+        this.logger.warn('Failed to update last login', {
           user_id: userRecord.id,
           error: repoError.message,
           request_id: requestId
         });
-        // Continue with defaults - this is non-critical
+        // Continue - this is non-critical
       }
 
-      // Step 7: Audit Log Creation (NON-CRITICAL - Graceful degradation)
+      // Step 7: Enhanced Audit Event Emission (NON-CRITICAL - Graceful degradation)
       try {
-        const { AuditLogRepository } = await import('@/database/repositories/AuditLogRepository');
-        const auditRepo = new AuditLogRepository();
-        
-        await auditRepo.create({ tenantId: userRecord.tenant_id }, {
-          organizationId: userRecord.tenant_id,
-          userId: userRecord.id,
-          action: 'USER_LOGIN',
-          resource: 'user',
-          recordId: userRecord.id,
-          details: {
-            wallet_address: userRecord.wallet_address,
-            user_agent: 'API',
-            login_method: 'wallet_signature',
-            last_login_updated: lastLoginUpdated
+        // Emit login success event using new audit system
+        await auditEventService.emitLogin(
+          {
+            userId: userRecord.id,
+            organizationId: userRecord.tenant_id,
+            requestId
           },
-          metadata: {
-            timestamp: new Date().toISOString(),
-            source: 'authentication_service',
-            request_id: requestId
+          true, // success = true
+          {
+            wallet_address: userRecord.wallet_address,
+            login_method: 'wallet_signature',
+            last_login_updated: lastLoginUpdated,
+            user_agent: 'API',
+            signature_valid: isValidSignature,
+            source: 'authentication_service'
           }
-        });
+        );
         
-        this.logger.debug('Audit log created for user login', { 
+        this.logger.debug('Audit event emitted for successful login', { 
           user_id: userRecord.id,
           request_id: requestId
         });
       } catch (auditError: any) {
-        this.logger.warn('Failed to create login audit log', {
+        this.logger.warn('Failed to emit login audit event', {
           user_id: userRecord.id,
           error: auditError.message,
           request_id: requestId
@@ -250,8 +253,6 @@ export class UserService {
           user_id: userRecord.id,
           tenant_id: userRecord.tenant_id,
           role: userRole,
-          is_admin: isAdmin,
-          is_super_admin: isSuperAdmin,
           iat: Math.floor(Date.now() / 1000),
           exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
         };
@@ -266,7 +267,14 @@ export class UserService {
         throw createAuthenticationError('Token generation failed');
       }
 
-      // Step 9: Response Construction (CRITICAL - Must succeed)
+      // Step 9: User object construction with single role
+      this.logger.debug('User authentication complete', {
+        user_id: userRecord.id,
+        role: userRole,
+        request_id: requestId
+      });
+
+      // Step 10: Response Construction (CRITICAL - Must succeed)
       const user: User = {
         id: userRecord.id,
         wallet_address: userRecord.wallet_address,
@@ -295,6 +303,7 @@ export class UserService {
         wallet_address: data.wallet_address,
         user_id: userRecord.id,
         tenant_id: userRecord.tenant_id,
+        role: userRole,
         needs_onboarding: needsOnboarding,
         last_login_updated: lastLoginUpdated,
         request_id: requestId
@@ -313,6 +322,38 @@ export class UserService {
         wallet_address: data.wallet_address,
         request_id: requestId
       });
+
+      // Emit failed login audit event (NON-CRITICAL)
+      try {
+        await auditEventService.emitLogin(
+          {
+            requestId
+          },
+          false, // success = false
+          {
+            wallet_address: data.wallet_address,
+            login_method: 'wallet_signature',
+            error_code: normalizedError.code,
+            error_message: normalizedError.message,
+            signature_valid: false,
+            source: 'authentication_service',
+            failure_reason: normalizedError.message
+          }
+        );
+        
+        this.logger.debug('Failed login audit event emitted', { 
+          wallet_address: data.wallet_address,
+          error_code: normalizedError.code,
+          request_id: requestId
+        });
+      } catch (auditError: any) {
+        this.logger.warn('Failed to emit login failure audit event', {
+          wallet_address: data.wallet_address,
+          error: auditError.message,
+          request_id: requestId
+        });
+        // Continue - this is non-critical
+      }
       
       // Re-throw the properly classified error
       throw normalizedError;
@@ -380,34 +421,38 @@ export class UserService {
         }
       });
 
-      // Get RBAC role information for the user FIRST
-      // Start with the user's database role, fallback to 'member' if empty  
-      let userRole = userRecord.role || 'member';
+      // Get user's role - new users get 'owner' role for their organization
+      let userRole: Role = userRecord.role && isValidRole(userRecord.role) ? userRecord.role as Role : 'owner';
+      
       try {
         const { RBACService } = await import('@/shared/services/rbac.service');
         const { AppDataSource } = await import('@/database/data-source');
         const rbacService = new RBACService(AppDataSource);
         
-        // Get user's primary role within their organization
+        // Get user's active role from RBAC system
         const userRoles = await rbacService.getUserRoles(userRecord.id, userRecord.tenant_id);
         if (userRoles && userRoles.length > 0) {
-          // RBAC role overrides database role when present
-          const sortedRoles = userRoles.sort((a, b) => (b.role?.priority || 0) - (a.role?.priority || 0));
-          const primaryRole = sortedRoles[0];
-          userRole = primaryRole.role?.key || userRole; // Keep database role if RBAC key is empty
+          const activeRoles = userRoles.filter(ur => !ur.isExpired);
+          if (activeRoles.length > 0) {
+            const sortedRoles = activeRoles.sort((a, b) => (b.role?.priority || 0) - (a.role?.priority || 0));
+            const primaryRole = sortedRoles[0];
+            if (primaryRole.role?.key && isValidRole(primaryRole.role.key)) {
+              userRole = primaryRole.role.key as Role;
+            }
+          }
         }
         
-        this.logger.info('User RBAC role resolved for auth', { 
+        this.logger.info('New user role resolved', { 
           user_id: userRecord.id,
           wallet_address: userRecord.wallet_address,
           role: userRole,
-          total_roles: userRoles?.length || 0,
-          all_roles: userRoles?.map(r => ({ key: r.role?.key, priority: r.role?.priority }))
+          total_roles: userRoles?.length || 0
         });
       } catch (rbacError) {
-        this.logger.warn('Failed to get RBAC role, using default', { 
+        this.logger.warn('Failed to resolve role for new user, using owner', { 
           user_id: userRecord.id,
-          error: rbacError.message 
+          error: rbacError.message,
+          fallback_role: userRole
         });
       }
 
@@ -439,7 +484,6 @@ export class UserService {
         created_at: userRecord.created_at,
         updated_at: userRecord.updated_at,
         // SECURITY: Admin flags are in JWT token only, NOT in API response
-        // Include basic role for frontend permissions (not sensitive admin flags)
         role: userRole
       };
 

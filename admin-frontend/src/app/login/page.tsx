@@ -3,13 +3,14 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminAuth } from '@/contexts/AdminAuthContext'
+import { WalletAccountSelector } from '@/components/WalletAccountSelector'
 import toast, { Toaster } from 'react-hot-toast'
 
 export default function LoginPage() {
   const [walletAddress, setWalletAddress] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
   const [isSigningIn, setIsSigningIn] = useState(false)
-  const { login, isAuthenticated, isLoading, hasSystemAccess, isSuperAdmin, isAdmin, isSupport } = useAdminAuth()
+  const { login, isAuthenticated, isLoading, hasSystemAccess } = useAdminAuth()
   const router = useRouter()
 
   // Redirect if already authenticated
@@ -26,27 +27,39 @@ export default function LoginPage() {
   }, [])
 
   const connectWallet = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      toast.error('Please install MetaMask or another Web3 wallet')
-      return
-    }
-
     try {
       setIsConnecting(true)
-      console.log('🔄 Login: Connecting wallet...')
+      console.log('🔄 Admin Login: Starting wallet connection...')
       
-      // Request account access
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts'
-      })
+      // Use the chain-agnostic wallet connection
+      const { connectWallet: connectWalletUtil, getAvailableAccounts } = await import('@/utils/walletConnection')
       
-      if (accounts.length > 0) {
-        setWalletAddress(accounts[0])
-        console.log('✅ Login: Wallet connected:', accounts[0])
+      // First, connect to wallet and get available accounts
+      const connection = await connectWalletUtil()
+      
+      // Get all available accounts for user information
+      const availableAccounts = await getAvailableAccounts()
+      
+      setWalletAddress(connection.address)
+      console.log(`✅ Admin Login: Connected on ${connection.chainName} (${connection.address})`)
+      console.log('🔍 Admin Login: Available accounts:', availableAccounts)
+      
+      if (availableAccounts.length > 1) {
+        toast.success(`Connected on ${connection.chainName} - ${availableAccounts.length} accounts available`)
+      } else {
+        toast.success(`Connected on ${connection.chainName}`)
       }
+      
     } catch (error: any) {
-      console.error('❌ Login: Wallet connection error:', error)
-      toast.error('Failed to connect wallet')
+      console.error('❌ Admin Login: Wallet connection error:', error)
+      
+      if (error.message.includes('cancelled') || error.message.includes('rejected')) {
+        toast.error('Connection cancelled by user')
+      } else if (error.message.includes('install')) {
+        toast.error('Please install MetaMask or another Web3 wallet')
+      } else {
+        toast.error(error.message || 'Failed to connect wallet')
+      }
     } finally {
       setIsConnecting(false)
     }
@@ -84,6 +97,10 @@ export default function LoginPage() {
         toast.error('Access denied: You need system administrator privileges to access this admin panel', {
           duration: 6000
         })
+      } else if (error.code === 'USER_REJECTED' || error.code === 4001 || error.message?.includes('cancelled by user')) {
+        toast.error('Please approve the wallet connection to authenticate')
+      } else if (error.code === 'REQUEST_PENDING' || error.code === -32002) {
+        toast.error('Connection request already pending. Please check your MetaMask extension.')
       } else if (error.message?.includes('User rejected')) {
         toast.error('Please approve the wallet signature to authenticate')
       } else if (error.message?.includes('install MetaMask')) {
@@ -166,6 +183,14 @@ export default function LoginPage() {
                 >
                   {isConnecting ? 'Connecting...' : 'Connect Wallet'}
                 </button>
+              </div>
+              
+              {/* Account Selector */}
+              <div className="mt-2">
+                <WalletAccountSelector 
+                  onAccountSelect={setWalletAddress}
+                  selectedAddress={walletAddress}
+                />
               </div>
             </div>
 

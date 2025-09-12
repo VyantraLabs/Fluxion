@@ -28,30 +28,49 @@ class SafeStorage {
 
   // Get item with optional expiration check
   get<T>(key: string): T | null {
-    if (!this.isAvailable) return null;
+    if (!this.isAvailable) {
+      console.error('🚫 Storage not available for key:', key);
+      return null;
+    }
 
     try {
       const item = localStorage.getItem(key);
+      console.debug('🔍 SafeStorage getting item:', {
+        key,
+        exists: !!item,
+        length: item?.length || 0
+      });
+      
       if (!item) return null;
 
       const parsed: StorageItem<T> = JSON.parse(item);
       
       // Check if item has expired
       if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+        console.debug('🕒 Item expired, removing:', key);
         this.remove(key);
         return null;
       }
 
+      console.debug('✅ SafeStorage retrieved item:', {
+        key,
+        hasValue: parsed.value !== null && parsed.value !== undefined,
+        timestamp: new Date(parsed.timestamp).toISOString()
+      });
+
       return parsed.value;
     } catch (error) {
-      console.error(`Error getting item from storage: ${key}`, error);
+      console.error(`❌ Error getting item from storage: ${key}`, error);
       return null;
     }
   }
 
   // Set item with optional expiration
   set<T>(key: string, value: T, expiresInMs?: number): boolean {
-    if (!this.isAvailable) return false;
+    if (!this.isAvailable) {
+      console.error('🚫 Storage not available for key:', key);
+      return false;
+    }
 
     try {
       const item: StorageItem<T> = {
@@ -60,10 +79,30 @@ class SafeStorage {
         expiresAt: expiresInMs ? Date.now() + expiresInMs : undefined,
       };
 
-      localStorage.setItem(key, JSON.stringify(item));
-      return true;
+      const serializedItem = JSON.stringify(item);
+      console.debug('🔄 SafeStorage setting item:', {
+        key,
+        valueType: typeof value,
+        hasExpiration: !!expiresInMs,
+        serializedLength: serializedItem.length
+      });
+
+      localStorage.setItem(key, serializedItem);
+      
+      // Immediate verification
+      const verification = localStorage.getItem(key);
+      const success = verification === serializedItem;
+      
+      console.debug('✅ SafeStorage set result:', {
+        key,
+        success,
+        stored: !!verification,
+        matches: success
+      });
+      
+      return success;
     } catch (error) {
-      console.error(`Error setting item in storage: ${key}`, error);
+      console.error(`❌ Error setting item in storage: ${key}`, error);
       return false;
     }
   }

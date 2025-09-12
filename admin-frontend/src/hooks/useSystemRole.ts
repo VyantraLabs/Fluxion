@@ -32,15 +32,25 @@ export function useSystemRole() {
       }
     }
 
+    // Handle both array format (legacy) and single role format (new)
+    const systemRoles = user.system_roles || user.systemRoles || []
+    const singleRole = user.role
+
+    console.debug('🔍 useSystemRole: Processing user role data:', {
+      userRole: singleRole,
+      systemRoles: systemRoles,
+      hasAccess: hasSystemAccess(user)
+    })
+
     return {
       hasAccess: hasSystemAccess(user),
-      isSystemSuperAdmin: hasSystemRole(user, 'system_super_admin'),
-      isSystemAdmin: hasSystemRole(user, 'system_admin'),
-      isSystemSupport: hasSystemRole(user, 'system_support'),
-      isSystemModerator: hasSystemRole(user, 'system_moderator'),
+      isSystemSuperAdmin: hasSystemRole(user, 'super_admin'),
+      isSystemAdmin: hasSystemRole(user, 'admin'),
+      isSystemSupport: hasSystemRole(user, 'support'),
+      isSystemModerator: hasSystemRole(user, 'moderator'),
       highestRole: getHighestSystemRole(user),
       allPermissions: getUserSystemPermissions(user),
-      systemRoles: user.system_roles || [],
+      systemRoles: singleRole ? [singleRole] : systemRoles, // Convert single role to array for compatibility
     }
   }, [user, isAuthenticated])
 

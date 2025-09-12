@@ -1,4 +1,4 @@
-import { FindOptionsWhere } from 'typeorm';
+import { FindOptionsWhere, IsNull } from 'typeorm';
 import { BaseRepository } from './BaseRepository';
 import { User } from '../entities/User';
 import { Role, RoleType } from '../entities/Role';
@@ -877,6 +877,38 @@ export class UserRepository extends BaseRepository<User> {
       throw new FluxionError(
         ErrorCodes.DATABASE_ERROR,
         'Failed to check system roles',
+        500,
+        error
+      );
+    }
+  }
+
+  /**
+   * Count users by organization (cross-tenant for admin use)
+   */
+  async countByOrganization(organizationId: string): Promise<number> {
+    try {
+      const result = await this.repository.count({
+        where: { 
+          organizationId,
+          deletedAt: IsNull()
+        } as FindOptionsWhere<User>
+      });
+      
+      this.logger.debug('User count by organization', { 
+        organizationId, 
+        count: result 
+      });
+      
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to count users by organization', { 
+        error: error.message, 
+        organizationId 
+      });
+      throw new FluxionError(
+        ErrorCodes.DATABASE_ERROR,
+        'Failed to count users by organization',
         500,
         error
       );

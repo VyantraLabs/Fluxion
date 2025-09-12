@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import { ethers } from 'ethers';
 import {
   User,
   AuthMessage,
@@ -86,7 +87,7 @@ const AuthContext = createContext<{
 // Provider component
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
-  const { state: web3State, actions: web3Actions } = useWeb3();
+  const web3 = useWeb3();
 
   // Initialize authentication on page load
   useEffect(() => {
@@ -95,15 +96,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Watch for wallet connection changes
   useEffect(() => {
-    if (web3State.wallet?.address && !state.isAuthenticated) {
-      // Wallet connected but not authenticated
-      // This could trigger automatic authentication or prompt user
+    if (web3.wallet?.address && !state.isAuthenticated) {
       console.log('Wallet connected, user not authenticated');
-    } else if (!web3State.wallet && state.isAuthenticated) {
-      // Wallet disconnected but user is authenticated
+    } else if (!web3.wallet && state.isAuthenticated) {
       logout();
     }
-  }, [web3State.wallet?.address, state.isAuthenticated]);
+  }, [web3.wallet?.address, state.isAuthenticated]);
 
   const initializeAuth = async () => {
     try {
@@ -151,9 +149,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const expiresAt = new Date(expires_at).getTime();
       const expiresInMs = expiresAt - Date.now();
 
-      // Store authentication data
-      authStorage.setToken(token, expiresInMs);
-      userStorage.setProfile(user);
+      // Store authentication data with enhanced debugging
+      console.debug('🔄 Storing authentication token:', {
+        tokenLength: token?.length,
+        expiresInMs,
+        tokenPreview: token?.substring(0, 30) + '...'
+      });
+      
+      // Store token and verify immediately
+      const tokenStored = authStorage.setToken(token, expiresInMs);
+      const profileStored = userStorage.setProfile(user);
+      
+      console.debug('✅ Token storage result:', tokenStored, 'Profile storage result:', profileStored);
+      
+      // Immediate verification of token storage
+      const verifyToken = authStorage.getToken();
+      const verifyProfile = userStorage.getProfile();
+      console.debug('🔍 Immediate verification:', {
+        tokenRetrieved: !!verifyToken,
+        tokenMatch: verifyToken === token,
+        profileRetrieved: !!verifyProfile,
+        profileMatch: verifyProfile?.id === user.id,
+        rawLocalStorageToken: localStorage.getItem('fluxion_auth_token') ? 'exists' : 'missing'
+      });
+      
+      if (!verifyToken) {
+        console.error('❌ CRITICAL: Token was not stored properly!');
+        throw new Error('Authentication token storage failed');
+      }
 
       // Set user state
       dispatch({ type: 'SET_USER', payload: user });
@@ -232,12 +255,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'LOGOUT' });
     
     // Disconnect wallet if connected
-    if (web3State.wallet?.isConnected) {
-      web3Actions.disconnect();
+    if (web3.wallet?.isConnected) {
+      web3.disconnect();
     }
 
     toast.success('Logged out successfully');
-  }, [web3State.wallet?.isConnected, web3Actions]);
+  }, [web3.wallet?.isConnected, web3]);
 
   const updateProfile = async (updates: UpdateUserProfileRequest): Promise<void> => {
     if (!state.user) {
@@ -340,9 +363,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const expiresAt = new Date(expires_at).getTime();
       const expiresInMs = expiresAt - Date.now();
 
-      // Store authentication data
-      authStorage.setToken(token, expiresInMs);
-      userStorage.setProfile(user);
+      // Store authentication data with enhanced debugging
+      console.debug('🔄 Storing authentication token:', {
+        tokenLength: token?.length,
+        expiresInMs,
+        tokenPreview: token?.substring(0, 30) + '...'
+      });
+      
+      // Store token and verify immediately
+      const tokenStored = authStorage.setToken(token, expiresInMs);
+      const profileStored = userStorage.setProfile(user);
+      
+      console.debug('✅ Token storage result:', tokenStored, 'Profile storage result:', profileStored);
+      
+      // Immediate verification of token storage
+      const verifyToken = authStorage.getToken();
+      const verifyProfile = userStorage.getProfile();
+      console.debug('🔍 Immediate verification:', {
+        tokenRetrieved: !!verifyToken,
+        tokenMatch: verifyToken === token,
+        profileRetrieved: !!verifyProfile,
+        profileMatch: verifyProfile?.id === user.id,
+        rawLocalStorageToken: localStorage.getItem('fluxion_auth_token') ? 'exists' : 'missing'
+      });
+      
+      if (!verifyToken) {
+        console.error('❌ CRITICAL: Token was not stored properly!');
+        throw new Error('Authentication token storage failed');
+      }
 
       // Set user state
       dispatch({ type: 'SET_USER', payload: user });
@@ -401,26 +449,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const authenticateWithWallet = async (): Promise<void> => {
-    if (!web3State.wallet?.address) {
+    if (!web3.wallet?.address) {
       throw new Error('Wallet not connected');
     }
 
     dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      console.debug('Starting wallet authentication for:', web3State.wallet.address);
+      console.debug('Starting wallet authentication for:', web3.wallet.address);
       
       // Step 1: Get authentication message from backend
-      const messageResponse = await authApi.getMessage(web3State.wallet.address);
+      const messageResponse = await authApi.getMessage(web3.wallet.address);
       const authMessage: AuthMessage = handleApiResponse(messageResponse);
       console.debug('Received auth message from backend');
 
       // Step 2: Sign the message with wallet
-      const signature = await web3Actions.signMessage(authMessage.message);
+      const signature = await web3.signMessage(authMessage.message);
       console.debug('Message signed by wallet');
 
       // Step 3: Authenticate with signature
-      await login(web3State.wallet.address, signature, authMessage.message);
+      await login(web3.wallet.address, signature, authMessage.message);
       console.debug('Authentication completed successfully');
 
     } catch (error: any) {
@@ -474,63 +522,57 @@ export const useAuthLoading = () => {
 
 // Combined authentication hook
 export const useWalletAuth = () => {
-  const { state: web3State, actions: web3Actions } = useWeb3();
+  const web3 = useWeb3();
   const { state: authState, actions: authActions } = useAuth();
 
   const connectAndAuthenticate = async (): Promise<void> => {
     try {
-      console.debug('Starting connect and authenticate flow');
+      console.debug('🔄 Auth: Starting chain-agnostic wallet connection...');
       
-      // Step 1: Connect wallet
-      if (!web3State.wallet?.isConnected) {
-        console.debug('Connecting wallet...');
-        await web3Actions.connect();
-      }
+      // Use the new chain-agnostic wallet connection
+      const { connectAndAuth } = await import('@/utils/walletConnection');
+      
+      const authResult = await connectAndAuth('http://localhost:3000');
+      
+      console.debug(`✅ Auth: Connected on chain ${authResult.chainId} with address ${authResult.address}`);
+      
+      // Authenticate with backend
+      await authActions.login(authResult.address, authResult.signature, authResult.message);
+      
+      console.debug('✅ Auth: Authentication completed successfully');
 
-      // Wait a moment for wallet state to update
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Step 2: Authenticate with backend
-      if (!authState.isAuthenticated) {
-        // Make sure we have the wallet address after connection
-        const walletAddress = web3State.wallet?.address;
-        if (!walletAddress) {
-          throw new Error('Wallet connected but address not available');
-        }
-
-        console.debug('Authenticating with backend...');
-        
-        // Get authentication message
-        const messageResponse = await authApi.getMessage(walletAddress);
-        const authMessage: AuthMessage = handleApiResponse(messageResponse);
-
-        // Sign message
-        const signature = await web3Actions.signMessage(authMessage.message);
-
-        // Authenticate
-        await authActions.login(walletAddress, signature, authMessage.message);
-      } else {
-        console.debug('Already authenticated, skipping auth flow');
-      }
     } catch (error: any) {
-      console.error('Connect and authenticate error:', error);
+      console.error('❌ Auth: Connect and authenticate error:', error);
+      
+      // Handle specific error codes
+      if (error.code === 4001) {
+        console.debug('💡 Auth: User rejected the connection request');
+        const userError = new Error('Connection cancelled by user');
+        (userError as any).code = 'USER_REJECTED';
+        throw userError;
+      } else if (error.code === -32002) {
+        console.debug('💡 Auth: Request already pending');
+        const pendingError = new Error('Connection request already pending. Please check your wallet extension.');
+        (pendingError as any).code = 'REQUEST_PENDING';
+        throw pendingError;
+      }
+      
       throw error;
     }
   };
 
   const disconnectAndLogout = () => {
     authActions.logout();
-    // Wallet will be disconnected automatically by the auth context
   };
 
   return {
-    isWalletConnected: !!web3State.wallet?.isConnected,
+    isWalletConnected: !!web3.wallet?.isConnected,
     isAuthenticated: authState.isAuthenticated,
-    isConnecting: web3State.isConnecting,
+    isConnecting: web3.isConnecting,
     isAuthenticating: authState.isLoading,
     user: authState.user,
-    wallet: web3State.wallet,
-    error: authState.error || web3State.error,
+    wallet: web3.wallet,
+    error: authState.error || web3.error,
     connectAndAuthenticate,
     disconnectAndLogout,
   };

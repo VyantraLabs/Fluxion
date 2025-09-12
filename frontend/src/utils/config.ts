@@ -2,7 +2,7 @@
 export const config = {
   // API Configuration
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005',
+    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
     version: process.env.NEXT_PUBLIC_API_VERSION || 'v1',
     timeout: 30000, // 30 seconds
   },
@@ -226,7 +226,6 @@ export const apiEndpoints = {
     tokens: '/config/tokens',
     tokensByChainId: (chainId: number) => `/config/tokens/${chainId}`,
     appConfig: '/config/app-config',
-    summary: '/config/summary',
     health: '/config/health',
     validateNetwork: (chainId: number) => `/config/validate/network/${chainId}`,
   },
