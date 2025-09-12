@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creative Agency Invoice - {{invoice_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 50%, #45b7d1 100%);
+            min-height: 100vh;
+        }
+        
+        .invoice-container {
+            max-width: 900px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
+            position: relative;
+        }
+        
+        .invoice-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 10px;
+            background: linear-gradient(90deg, #ff6b6b 0%, #4ecdc4 33%, #45b7d1 66%, #f093fb 100%);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 3rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before,
+        .header::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+        }
+        
+        .header::before {
+            top: -100px;
+            right: -100px;
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(45deg, rgba(255, 107, 107, 0.3), rgba(78, 205, 196, 0.3));
+        }
+        
+        .header::after {
+            bottom: -150px;
+            left: -150px;
+            width: 400px;
+            height: 400px;
+            background: linear-gradient(45deg, rgba(69, 183, 209, 0.3), rgba(240, 147, 251, 0.3));
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+        
+        .brand-logo {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 100%);
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.4);
+            transform: rotate(-5deg);
+        }
+        
+        .company-info h1 {
+            font-size: 2.8rem;
+            font-weight: 900;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .company-tagline {
+            color: #ecf0f1;
+            font-size: 1.2rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            opacity: 0.9;
+        }
+        
+        .invoice-meta {
+            text-align: right;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(15px);
+            padding: 2rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .invoice-meta h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        
+        .invoice-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #4ecdc4;
+        }
+        
+        .creative-hero {
+            background: linear-gradient(135deg, rgba(255, 107, 107, 0.1) 0%, rgba(78, 205, 196, 0.1) 50%, rgba(69, 183, 209, 0.1) 100%);
+            padding: 3rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .creative-hero::before {
+            content: '🎨';
+            position: absolute;
+            top: 1rem;
+            left: 2rem;
+            font-size: 3rem;
+            opacity: 0.3;
+        }
+        
+        .creative-hero::after {
+            content: '✨';
+            position: absolute;
+            bottom: 1rem;
+            right: 2rem;
+            font-size: 3rem;
+            opacity: 0.3;
+        }
+        
+        .creative-hero h3 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .creative-hero p {
+            color: #5a6c7d;
+            font-size: 1.3rem;
+            max-width: 700px;
+            margin: 0 auto;
+            line-height: 1.8;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .project-type-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 100%);
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .client-info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .info-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 3px solid transparent;
+            background-clip: padding-box;
+            position: relative;
+        }
+        
+        .info-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            padding: 3px;
+            background: linear-gradient(135deg, #ff6b6b, #4ecdc4, #45b7d1);
+            border-radius: 20px;
+            mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+            -webkit-mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+            mask-composite: exclude;
+            -webkit-mask-composite: xor;
+            z-index: -1;
+        }
+        
+        .info-card h4 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .info-card p {
+            margin-bottom: 0.5rem;
+            color: #5a6c7d;
+            font-size: 1rem;
+        }
+        
+        .info-card .highlight {
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 1.2rem;
+        }
+        
+        .creative-services {
+            background: white;
+            border-radius: 25px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .services-header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 50%, #45b7d1 100%);
+            color: white;
+            padding: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        
+        .services-header h3 {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        
+        .services-list {
+            padding: 0;
+        }
+        
+        .service-item {
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
+            align-items: center;
+            padding: 2rem;
+            border-bottom: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .service-item:hover {
+            background: linear-gradient(135deg, rgba(255, 107, 107, 0.05) 0%, rgba(78, 205, 196, 0.05) 100%);
+            transform: translateX(8px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
+        }
+        
+        .service-item:last-child {
+            border-bottom: none;
+        }
+        
+        .service-description {
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 1.2rem;
+        }
+        
+        .service-details {
+            color: #5a6c7d;
+            margin-top: 0.25rem;
+            font-size: 1rem;
+            font-style: italic;
+        }
+        
+        .service-quantity,
+        .service-rate,
+        .service-amount {
+            text-align: right;
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+        
+        .service-amount {
+            font-size: 1.4rem;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .creative-totals {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            border-radius: 25px;
+            padding: 2.5rem;
+            margin-left: auto;
+            width: 450px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .creative-totals::before {
+            content: '';
+            position: absolute;
+            top: -100px;
+            right: -100px;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(255, 107, 107, 0.3), rgba(78, 205, 196, 0.3));
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            z-index: 2;
+            font-size: 1.1rem;
+        }
+        
+        .total-row:last-child {
+            border-bottom: none;
+            border-top: 4px solid #4ecdc4;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            font-size: 1.8rem;
+            font-weight: 900;
+            color: #4ecdc4;
+        }
+        
+        .crypto-payment-card {
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1a2e 100%);
+            color: white;
+            border-radius: 30px;
+            padding: 3rem;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+            border: 3px solid transparent;
+            background-clip: padding-box;
+        }
+        
+        .crypto-payment-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            padding: 3px;
+            background: linear-gradient(135deg, #ff6b6b, #4ecdc4, #45b7d1, #f093fb);
+            border-radius: 30px;
+            mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+            -webkit-mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+            mask-composite: exclude;
+            -webkit-mask-composite: xor;
+            z-index: -1;
+        }
+        
+        .crypto-payment-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(78, 205, 196, 0.4) 0%, transparent 70%);
+        }
+        
+        .crypto-header {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 100%);
+            border-radius: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            box-shadow: 0 12px 30px rgba(255, 107, 107, 0.4);
+            transform: rotate(-5deg);
+        }
+        
+        .crypto-header h3 {
+            font-size: 2rem;
+            font-weight: 800;
+        }
+        
+        .crypto-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-detail {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            border-radius: 18px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .crypto-detail-label {
+            font-size: 1rem;
+            color: #bdc3c7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .crypto-detail-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        
+        .payment-address {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            border-radius: 18px;
+            padding: 2rem;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            word-break: break-all;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .creative-footer {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            padding: 2rem;
+            border-top: 1px solid #cbd5e0;
+        }
+        
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+        
+        .footer-section h4 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .footer-section ul {
+            list-style: none;
+        }
+        
+        .footer-section li {
+            margin-bottom: 0.75rem;
+            padding-left: 1.5rem;
+            position: relative;
+            color: #5a6c7d;
+        }
+        
+        .footer-section li::before {
+            content: '⭐';
+            position: absolute;
+            left: 0;
+        }
+        
+        .contact-info {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+            border: 2px solid transparent;
+            background-clip: padding-box;
+            position: relative;
+        }
+        
+        .contact-info::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            padding: 2px;
+            background: linear-gradient(135deg, #ff6b6b, #4ecdc4, #45b7d1);
+            border-radius: 20px;
+            mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+            -webkit-mask: linear-gradient(white 0 0) content-box, linear-gradient(white 0 0);
+            mask-composite: exclude;
+            -webkit-mask-composite: xor;
+            z-index: -1;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            
+            .invoice-container {
+                box-shadow: none;
+                margin: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .invoice-container {
+                margin: 1rem;
+                border-radius: 20px;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 2rem;
+            }
+            
+            .invoice-meta {
+                text-align: left;
+            }
+            
+            .client-info-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .service-item {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+                text-align: left;
+            }
+            
+            .crypto-details-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .creative-totals {
+                width: 100%;
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="header-content">
+                <div class="brand-section">
+                    <div class="brand-logo">
+                        {{agency_name.[0]}}
+                    </div>
+                    <div class="company-info">
+                        <h1>{{agency_name}}</h1>
+                        <div class="company-tagline">Creative Excellence</div>
+                    </div>
+                </div>
+                <div class="invoice-meta">
+                    <h2>INVOICE</h2>
+                    <div class="invoice-number">#{{invoice_number}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Creative Hero Section -->
+        <div class="creative-hero">
+            <h3>{{project_name}}</h3>
+            <p>{{project_description}}</p>
+            {{#if project_type}}
+            <div class="project-type-badge">{{project_type}}</div>
+            {{/if}}
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Client Information -->
+            <div class="client-info-section">
+                <div class="info-card">
+                    <h4>🎯 Client Details</h4>
+                    <p class="highlight">{{client_name}}</p>
+                    <p>{{client_email}}</p>
+                    {{#if client_company}}
+                    <p>{{client_company}}</p>
+                    {{/if}}
+                    {{#if client_industry}}
+                    <p>Industry: {{client_industry}}</p>
+                    {{/if}}
+                    {{#if client_address}}
+                    <p>{{client_address}}</p>
+                    {{/if}}
+                </div>
+                <div class="info-card">
+                    <h4>📅 Project Timeline</h4>
+                    <p><strong>Project Start:</strong> {{project_start_date}}</p>
+                    <p><strong>Completion:</strong> {{project_end_date}}</p>
+                    {{#if creative_director}}
+                    <p><strong>Creative Director:</strong> {{creative_director}}</p>
+                    {{/if}}
+                    <p><strong>Invoice Date:</strong> {{issue_date}}</p>
+                    <p><strong>Payment Due:</strong> {{due_date}}</p>
+                </div>
+            </div>
+
+            <!-- Creative Services Section -->
+            <div class="creative-services">
+                <div class="services-header">
+                    <span>🚀</span>
+                    <h3>Creative Services & Deliverables</h3>
+                </div>
+                <div class="services-list">
+                    {{#each items}}
+                    <div class="service-item">
+                        <div>
+                            <div class="service-description">{{description}}</div>
+                            <div class="service-details">{{creative_details}}</div>
+                        </div>
+                        <div class="service-quantity">{{quantity}}</div>
+                        <div class="service-rate">${{rate}}</div>
+                        <div class="service-amount">${{amount}}</div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Totals Section -->
+            <div class="creative-totals">
+                <div class="total-row">
+                    <span>Creative Services:</span>
+                    <span>${{subtotal}}</span>
+                </div>
+                {{#if rush_fee}}
+                <div class="total-row">
+                    <span>Rush Delivery Fee:</span>
+                    <span>${{rush_fee}}</span>
+                </div>
+                {{/if}}
+                {{#if discount_amount}}
+                <div class="total-row">
+                    <span>Creative Discount:</span>
+                    <span>-${{discount_amount}}</span>
+                </div>
+                {{/if}}
+                {{#if tax_amount}}
+                <div class="total-row">
+                    <span>Tax ({{tax_rate}}%):</span>
+                    <span>${{tax_amount}}</span>
+                </div>
+                {{/if}}
+                <div class="total-row">
+                    <span>Total Creative Fee:</span>
+                    <span>${{total_amount}}</span>
+                </div>
+            </div>
+
+            <!-- Crypto Payment Section -->
+            <div class="crypto-payment-card">
+                <div class="crypto-header">
+                    <div class="crypto-icon">💎</div>
+                    <h3>Digital Payment Portal</h3>
+                </div>
+                
+                <div class="crypto-details-grid">
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Blockchain</div>
+                        <div class="crypto-detail-value">{{network_name}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Currency</div>
+                        <div class="crypto-detail-value">{{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Amount</div>
+                        <div class="crypto-detail-value">{{crypto_amount}} {{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">USD Value</div>
+                        <div class="crypto-detail-value">${{total_amount}}</div>
+                    </div>
+                </div>
+
+                <div class="payment-address">
+                    <div style="margin-bottom: 1rem; font-size: 1rem; color: #bdc3c7; font-weight: 600;">PAYMENT WALLET ADDRESS</div>
+                    {{recipient_address}}
+                </div>
+
+                {{#if qr_code_url}}
+                <div style="text-align: center; margin-top: 2rem;">
+                    <img src="{{qr_code_url}}" alt="Payment QR Code" style="max-width: 220px; height: auto; border-radius: 18px; box-shadow: 0 12px 30px rgba(78, 205, 196, 0.4);">
+                    <p style="margin-top: 1rem; font-size: 1rem; color: #bdc3c7; font-weight: 600;">Scan with your crypto wallet</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="creative-footer">
+            <div class="footer-grid">
+                <div class="footer-section">
+                    <h4>🎨 Creative Terms & Usage Rights</h4>
+                    <ul>
+                        <li>Payment due within {{due_days}} days for full usage rights</li>
+                        <li>All creative work remains agency property until payment</li>
+                        <li>Unlimited revisions included within project scope</li>
+                        <li>Client receives full source files upon payment</li>
+                        <li>Usage rights include commercial and digital applications</li>
+                        <li>Additional licensing fees apply for extended usage</li>
+                        <li>Final files delivered in multiple formats (PNG, SVG, PSD, AI)</li>
+                    </ul>
+                </div>
+                <div class="contact-info">
+                    <h4>🚀 Creative Contact</h4>
+                    <p><strong>Email:</strong> {{agency_email}}</p>
+                    <p><strong>Phone:</strong> {{agency_phone}}</p>
+                    <p><strong>Website:</strong> {{agency_website}}</p>
+                    {{#if behance_profile}}
+                    <p><strong>Behance:</strong> {{behance_profile}}</p>
+                    {{/if}}
+                    {{#if dribbble_profile}}
+                    <p><strong>Dribbble:</strong> {{dribbble_profile}}</p>
+                    {{/if}}
+                    
+                    {{#if awards}}
+                    <div style="margin-top: 1rem;">
+                        <p><strong>Recent Awards:</strong></p>
+                        {{#each awards}}
+                        <p style="font-size: 0.9rem; color: #5a6c7d;">🏆 {{this}}</p>
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+            
+            {{#if creative_note}}
+            <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 4px solid; border-image: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1) 1; text-align: center;">
+                <p style="color: #5a6c7d; font-style: italic; font-size: 1.1rem; font-weight: 500;">{{creative_note}}</p>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</body>
+</html>

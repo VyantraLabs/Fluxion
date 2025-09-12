@@ -424,12 +424,19 @@ const OrganizationCard: React.FC<OrganizationCardProps> = ({ organization, onSel
           </div>
         </div>
 
-        <div className="pt-4 border-t border-gray-200">
+        <div className="pt-4 border-t border-gray-200 flex space-x-2">
+          <Link 
+            href={`/dashboard/organizations/${organization.id}`}
+            className="flex-1 text-center text-sm text-blue-600 hover:text-blue-500 font-medium flex items-center justify-center group px-3 py-2 border border-blue-200 rounded-md hover:bg-blue-50 transition-colors"
+          >
+            <Eye className="w-3 h-3 mr-1" />
+            View Dashboard
+          </Link>
           <button 
             onClick={() => onSelect(organization)}
-            className="w-full text-center text-sm text-primary-600 hover:text-primary-500 font-medium flex items-center justify-center group"
+            className="flex-1 text-center text-sm text-primary-600 hover:text-primary-500 font-medium flex items-center justify-center group px-3 py-2 border border-primary-200 rounded-md hover:bg-primary-50 transition-colors"
           >
-            Select Organization
+            Select
             <ArrowRight className="w-3 h-3 ml-1 group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
@@ -519,13 +526,22 @@ const OrganizationListItem: React.FC<OrganizationListItemProps> = ({ organizatio
               <p className="text-xs text-gray-500">Active</p>
             </div>
 
-            <button 
-              onClick={() => onSelect(organization)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary-600 bg-primary-50 hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              Select
-              <ArrowRight className="w-3 h-3 ml-1" />
-            </button>
+            <div className="flex space-x-2">
+              <Link 
+                href={`/dashboard/organizations/${organization.id}`}
+                className="inline-flex items-center px-3 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <Eye className="w-3 h-3 mr-1" />
+                View
+              </Link>
+              <button 
+                onClick={() => onSelect(organization)}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-primary-600 bg-primary-50 hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              >
+                Select
+                <ArrowRight className="w-3 h-3 ml-1" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

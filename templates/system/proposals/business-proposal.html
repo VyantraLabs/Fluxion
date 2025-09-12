@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Proposal - {{proposal_title}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Times New Roman', serif;
+            line-height: 1.7;
+            color: #1a1a1a;
+            background: white;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .proposal-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 3rem 2rem;
+            background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+            color: white;
+            border-radius: 12px;
+        }
+        
+        .proposal-title {
+            font-size: 2.8rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .proposal-subtitle {
+            font-size: 1.3rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+        }
+        
+        .proposal-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #1e40af;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #1e40af;
+        }
+        
+        .executive-summary {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+        }
+        
+        .investment-highlight {
+            background: #f0fdf4;
+            border: 2px solid #10b981;
+            text-align: center;
+            padding: 2rem;
+            margin: 2rem 0;
+            border-radius: 12px;
+        }
+        
+        .investment-amount {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #10b981;
+            margin-bottom: 0.5rem;
+        }
+        
+        .investment-label {
+            color: #166534;
+            font-size: 1.1rem;
+        }
+        
+        .signature-section {
+            margin-top: 4rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+        
+        .signature-block {
+            text-align: center;
+            padding: 2rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+        }
+        
+        .signature-line {
+            border-bottom: 3px solid #1a1a1a;
+            width: 100%;
+            height: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .signature-label {
+            font-weight: bold;
+            color: #1e40af;
+            font-size: 1.1rem;
+        }
+        
+        .date-line {
+            border-bottom: 2px solid #1a1a1a;
+            width: 150px;
+            height: 2rem;
+            margin: 1rem auto;
+        }
+        
+        @media print {
+            body {
+                margin: 0;
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="proposal-header">
+        <h1 class="proposal-title">{{proposal_title}}</h1>
+        <div class="proposal-subtitle">Professional Business Proposal</div>
+        
+        <div class="proposal-meta">
+            <div><strong>Prepared For:</strong> {{client_name}}</div>
+            <div><strong>Prepared By:</strong> {{company_name}}</div>
+            <div><strong>Date:</strong> {{proposal_date}}</div>
+            <div><strong>Valid Until:</strong> {{valid_until}}</div>
+        </div>
+    </div>
+
+    <div class="section executive-summary">
+        <h2 class="section-title">Executive Summary</h2>
+        <p>{{executive_summary}}</p>
+    </div>
+
+    <div class="investment-highlight">
+        <div class="investment-amount">${{proposal_value}}</div>
+        <div class="investment-label">Total Investment</div>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Scope of Work</h2>
+        <p>{{scope_of_work}}</p>
+        
+        {{#if deliverables}}
+        <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #1e40af;">Key Deliverables:</h3>
+        <ul style="margin-left: 2rem;">
+            {{#each deliverables}}
+            <li style="margin-bottom: 0.5rem;">{{this}}</li>
+            {{/each}}
+        </ul>
+        {{/if}}
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Timeline & Milestones</h2>
+        <p>{{timeline_description}}</p>
+        
+        {{#if milestones}}
+        <div style="margin-top: 2rem;">
+            {{#each milestones}}
+            <div style="margin-bottom: 1rem; padding: 1rem; background: white; border-radius: 8px; border-left: 4px solid #1e40af;">
+                <strong>{{date}}:</strong> {{description}}
+            </div>
+            {{/each}}
+        </div>
+        {{/if}}
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Investment Breakdown</h2>
+        
+        {{#if cost_breakdown}}
+        {{#each cost_breakdown}}
+        <div style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid #e5e7eb;">
+            <span>{{item}}:</span>
+            <span style="font-weight: bold;">${{cost}}</span>
+        </div>
+        {{/each}}
+        
+        <div style="display: flex; justify-content: space-between; padding: 1rem 0; margin-top: 1rem; border-top: 3px solid #1e40af; font-size: 1.3rem; font-weight: bold; color: #1e40af;">
+            <span>Total Investment:</span>
+            <span>${{proposal_value}}</span>
+        </div>
+        {{/if}}
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Terms & Conditions</h2>
+        
+        <ul style="margin-left: 2rem;">
+            <li style="margin-bottom: 0.5rem;">This proposal is valid until {{valid_until}}</li>
+            <li style="margin-bottom: 0.5rem;">{{payment_terms}}</li>
+            <li style="margin-bottom: 0.5rem;">Work begins upon signed agreement and initial payment</li>
+            <li style="margin-bottom: 0.5rem;">All deliverables remain property of provider until full payment</li>
+            <li style="margin-bottom: 0.5rem;">Changes to scope may result in additional costs</li>
+        </ul>
+    </div>
+
+    <div class="signature-section">
+        <div class="signature-block">
+            <div class="signature-line"></div>
+            <div class="signature-label">Client Acceptance</div>
+            <p style="margin-top: 1rem;">{{client_name}}</p>
+            <div class="date-line"></div>
+            <p>Date</p>
+        </div>
+        
+        <div class="signature-block">
+            <div class="signature-line"></div>
+            <div class="signature-label">Company Representative</div>
+            <p style="margin-top: 1rem;">{{company_name}}</p>
+            <div class="date-line"></div>
+            <p>Date</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Estimate - {{project_name}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: #f8fafc;
+            min-height: 100vh;
+        }
+        
+        .estimate-container {
+            max-width: 900px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .estimate-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 3rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .estimate-header::before {
+            content: '';
+            position: absolute;
+            top: -100px;
+            right: -100px;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .estimate-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        
+        .estimate-subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+        }
+        
+        .estimate-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .meta-item {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .meta-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 0.25rem;
+        }
+        
+        .meta-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .project-overview {
+            padding: 2rem;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-bottom: 3px solid #6366f1;
+        }
+        
+        .project-overview h2 {
+            color: #6366f1;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .project-description {
+            color: #64748b;
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+        }
+        
+        .project-highlights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        
+        .highlight-item {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            border-left: 4px solid #6366f1;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .highlight-title {
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 0.25rem;
+        }
+        
+        .highlight-value {
+            color: #64748b;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .phases-section {
+            margin-bottom: 3rem;
+        }
+        
+        .section-title {
+            color: #1a1a1a;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .phases-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+        
+        .phase-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 2rem;
+            border: 2px solid #e2e8f0;
+            transition: all 0.2s ease;
+        }
+        
+        .phase-card:hover {
+            border-color: #6366f1;
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.1);
+        }
+        
+        .phase-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+        
+        .phase-title {
+            color: #6366f1;
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        
+        .phase-duration {
+            background: #6366f1;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .phase-description {
+            color: #64748b;
+            margin-bottom: 1.5rem;
+            line-height: 1.7;
+        }
+        
+        .deliverables-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .deliverable-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #4b5563;
+        }
+        
+        .deliverable-item::before {
+            content: '✓';
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .phase-cost {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 2px solid #e2e8f0;
+        }
+        
+        .cost-breakdown {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        
+        .phase-price {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #6366f1;
+        }
+        
+        .timeline-section {
+            margin-bottom: 3rem;
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 2rem;
+            border: 2px solid #e2e8f0;
+        }
+        
+        .timeline-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        
+        .timeline-item {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            border: 2px solid #e2e8f0;
+        }
+        
+        .timeline-phase {
+            font-size: 0.9rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .timeline-date {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .investment-summary {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .investment-summary::before {
+            content: '';
+            position: absolute;
+            top: -100px;
+            right: -100px;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
+        }
+        
+        .summary-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .summary-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+        }
+        
+        .cost-breakdown-list {
+            display: grid;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .cost-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .cost-item:last-child {
+            border-bottom: none;
+            border-top: 3px solid #6366f1;
+            margin-top: 1rem;
+            padding-top: 1.5rem;
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        
+        .payment-terms {
+            background: #fef3c7;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-top: 2rem;
+            border: 2px solid #f59e0b;
+        }
+        
+        .terms-title {
+            color: #d97706;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .terms-list {
+            list-style: none;
+            display: grid;
+            gap: 0.75rem;
+        }
+        
+        .terms-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            color: #92400e;
+        }
+        
+        .terms-list li::before {
+            content: '•';
+            color: #d97706;
+            font-weight: bold;
+            margin-top: 0.1rem;
+        }
+        
+        .validity-notice {
+            background: #dbeafe;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            border: 2px solid #3b82f6;
+            text-align: center;
+        }
+        
+        .validity-text {
+            color: #1e40af;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .validity-date {
+            color: #1d4ed8;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            
+            .estimate-container {
+                box-shadow: none;
+                margin: 0;
+                border: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .estimate-container {
+                margin: 1rem;
+                border-radius: 12px;
+            }
+            
+            .estimate-meta {
+                grid-template-columns: 1fr;
+            }
+            
+            .project-highlights {
+                grid-template-columns: 1fr;
+            }
+            
+            .deliverables-list {
+                grid-template-columns: 1fr;
+            }
+            
+            .timeline-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="estimate-container">
+        <!-- Header -->
+        <div class="estimate-header">
+            <div class="header-content">
+                <h1 class="estimate-title">Project Estimate</h1>
+                <div class="estimate-subtitle">{{project_name}} - Comprehensive Development Plan</div>
+                
+                <div class="estimate-meta">
+                    <div class="meta-item">
+                        <div class="meta-label">Estimate Number</div>
+                        <div class="meta-value">#{{estimate_number}}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Project Duration</div>
+                        <div class="meta-value">{{project_duration}}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Valid Until</div>
+                        <div class="meta-value">{{estimate_valid_until}}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Total Phases</div>
+                        <div class="meta-value">{{total_phases}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Project Overview -->
+        <div class="project-overview">
+            <h2>📋 Project Overview</h2>
+            <div class="project-description">
+                {{project_description}}
+            </div>
+            
+            <div class="project-highlights">
+                <div class="highlight-item">
+                    <div class="highlight-title">Estimated Start Date</div>
+                    <div class="highlight-value">{{estimated_start_date}}</div>
+                </div>
+                <div class="highlight-item">
+                    <div class="highlight-title">Estimated Completion</div>
+                    <div class="highlight-value">{{estimated_completion_date}}</div>
+                </div>
+                <div class="highlight-item">
+                    <div class="highlight-title">Team Size</div>
+                    <div class="highlight-value">{{team_size}} professionals</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Project Phases -->
+            <div class="phases-section">
+                <h2 class="section-title">🚀 Project Phases Breakdown</h2>
+                
+                <div class="phases-grid">
+                    {{#each phases}}
+                    <div class="phase-card">
+                        <div class="phase-header">
+                            <h3 class="phase-title">Phase {{phase_number}}: {{phase_name}}</h3>
+                            <div class="phase-duration">{{duration}}</div>
+                        </div>
+                        
+                        <div class="phase-description">{{description}}</div>
+                        
+                        <div class="deliverables-list">
+                            {{#each deliverables}}
+                            <div class="deliverable-item">{{this}}</div>
+                            {{/each}}
+                        </div>
+                        
+                        <div class="phase-cost">
+                            <div class="cost-breakdown">{{hours}} hours × ${{hourly_rate}}/hour</div>
+                            <div class="phase-price">${{cost}}</div>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="timeline-section">
+                <h2 class="section-title">📅 Project Timeline</h2>
+                
+                <div class="timeline-grid">
+                    {{#each milestones}}
+                    <div class="timeline-item">
+                        <div class="timeline-phase">{{milestone_name}}</div>
+                        <div class="timeline-date">{{date}}</div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Investment Summary -->
+            <div class="investment-summary">
+                <div class="summary-content">
+                    <h2 class="summary-title">💰 Investment Summary</h2>
+                    
+                    <div class="cost-breakdown-list">
+                        {{#each phase_costs}}
+                        <div class="cost-item">
+                            <span>{{phase_name}}:</span>
+                            <span>${{cost}}</span>
+                        </div>
+                        {{/each}}
+                        
+                        {{#if project_management_fee}}
+                        <div class="cost-item">
+                            <span>Project Management ({{pm_percentage}}%):</span>
+                            <span>${{project_management_fee}}</span>
+                        </div>
+                        {{/if}}
+                        
+                        {{#if contingency_buffer}}
+                        <div class="cost-item">
+                            <span>Contingency Buffer ({{contingency_percentage}}%):</span>
+                            <span>${{contingency_buffer}}</span>
+                        </div>
+                        {{/if}}
+                        
+                        <div class="cost-item">
+                            <span>Total Investment:</span>
+                            <span>${{total_estimate}}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Terms -->
+            <div class="payment-terms">
+                <h3 class="terms-title">💳 Payment Terms & Conditions</h3>
+                
+                <ul class="terms-list">
+                    <li>Payment milestone structure: {{payment_milestone_structure}}</li>
+                    <li>Initial deposit: {{initial_deposit_percentage}}% due upon project commencement</li>
+                    <li>Phase completion payments: {{phase_payment_percentage}}% at each milestone</li>
+                    <li>Final payment: {{final_payment_percentage}}% upon project completion</li>
+                    <li>Payment terms: Net {{payment_terms_days}} days from invoice date</li>
+                    <li>Late payment fee: {{late_payment_fee}}% per month on overdue amounts</li>
+                    <li>Scope changes will be documented and priced separately</li>
+                    <li>All prices include applicable taxes unless otherwise noted</li>
+                </ul>
+            </div>
+
+            <!-- Validity Notice -->
+            <div class="validity-notice">
+                <div class="validity-text">This estimate is valid until:</div>
+                <div class="validity-date">{{estimate_valid_until}}</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

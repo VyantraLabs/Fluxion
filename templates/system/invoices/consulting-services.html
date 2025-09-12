@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulting Invoice - {{invoice_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: #f8fafc;
+            min-height: 100vh;
+        }
+        
+        .invoice-container {
+            max-width: 850px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+            color: white;
+            padding: 2.5rem 2rem;
+            position: relative;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 200px;
+            height: 100%;
+            background: linear-gradient(45deg, rgba(255, 255, 255, 0.1), transparent);
+            clip-path: polygon(50% 0%, 100% 0%, 100% 100%);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .brand-section h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .company-tagline {
+            color: #93c5fd;
+            font-size: 1rem;
+            font-weight: 500;
+            font-style: italic;
+        }
+        
+        .invoice-meta {
+            text-align: right;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .invoice-meta h2 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .invoice-number {
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        
+        .consultant-intro {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            padding: 2rem;
+            border-bottom: 3px solid #1e40af;
+        }
+        
+        .consultant-intro h3 {
+            color: #1e40af;
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        .consultant-intro p {
+            color: #4b5563;
+            font-size: 1.1rem;
+            line-height: 1.7;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .client-info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .info-card {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border-left: 4px solid #1e40af;
+        }
+        
+        .info-card h4 {
+            color: #1e40af;
+            font-size: 1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+        }
+        
+        .info-card p {
+            margin-bottom: 0.25rem;
+            color: #4a5568;
+        }
+        
+        .info-card .highlight {
+            font-weight: 600;
+            color: #1a1a1a;
+            font-size: 1.1rem;
+        }
+        
+        .consultation-details {
+            background: white;
+            border-radius: 12px;
+            border: 2px solid #e5e7eb;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .consultation-header {
+            background: #1e40af;
+            color: white;
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .consultation-header h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        .consultation-list {
+            padding: 0;
+        }
+        
+        .consultation-item {
+            display: grid;
+            grid-template-columns: 2fr auto auto auto;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            transition: background-color 0.2s;
+        }
+        
+        .consultation-item:hover {
+            background-color: #f9fafb;
+        }
+        
+        .consultation-item:last-child {
+            border-bottom: none;
+        }
+        
+        .consultation-description {
+            font-weight: 500;
+            color: #1a1a1a;
+        }
+        
+        .consultation-type {
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+            font-style: italic;
+        }
+        
+        .consultation-hours,
+        .consultation-rate,
+        .consultation-amount {
+            text-align: right;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .consultation-amount {
+            font-size: 1.1rem;
+            color: #1e40af;
+        }
+        
+        .totals-section {
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-left: auto;
+            width: 350px;
+            border: 1px solid #d1d5db;
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #d1d5db;
+        }
+        
+        .total-row:last-child {
+            border-bottom: none;
+            border-top: 3px solid #1e40af;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e40af;
+        }
+        
+        .crypto-payment-section {
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .crypto-payment-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 150px;
+            height: 100%;
+            background: linear-gradient(45deg, rgba(30, 64, 175, 0.3), transparent);
+            clip-path: polygon(30% 0%, 100% 0%, 100% 100%);
+        }
+        
+        .crypto-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+        }
+        
+        .crypto-header h3 {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+        
+        .crypto-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-detail {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .crypto-detail-label {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.25rem;
+        }
+        
+        .crypto-detail-value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .payment-address {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            word-break: break-all;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .professional-footer {
+            background: #f8fafc;
+            padding: 2rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+        
+        .footer-section h4 {
+            color: #1e40af;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        .footer-section ul {
+            list-style: none;
+        }
+        
+        .footer-section li {
+            margin-bottom: 0.5rem;
+            padding-left: 1rem;
+            position: relative;
+            color: #4b5563;
+        }
+        
+        .footer-section li::before {
+            content: '■';
+            color: #1e40af;
+            font-size: 0.8rem;
+            position: absolute;
+            left: 0;
+        }
+        
+        .contact-info {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            
+            .invoice-container {
+                box-shadow: none;
+                margin: 0;
+                border: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .invoice-container {
+                margin: 1rem;
+                border-radius: 8px;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+            
+            .invoice-meta {
+                text-align: left;
+            }
+            
+            .client-info-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .consultation-item {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+                text-align: left;
+            }
+            
+            .crypto-details-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .totals-section {
+                width: 100%;
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="header-content">
+                <div class="brand-section">
+                    <h1>{{consultant_name}}</h1>
+                    <div class="company-tagline">Professional Consulting Services</div>
+                </div>
+                <div class="invoice-meta">
+                    <h2>INVOICE</h2>
+                    <div class="invoice-number">#{{invoice_number}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consultant Introduction -->
+        <div class="consultant-intro">
+            <h3>{{consultation_type}} Consultation</h3>
+            <p>Professional consulting services delivered with expertise, precision, and strategic insights to drive your business forward.</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Client Information -->
+            <div class="client-info-section">
+                <div class="info-card">
+                    <h4>Client Information</h4>
+                    <p class="highlight">{{client_name}}</p>
+                    <p>{{client_email}}</p>
+                    {{#if client_company}}
+                    <p>{{client_company}}</p>
+                    {{/if}}
+                    {{#if client_position}}
+                    <p>{{client_position}}</p>
+                    {{/if}}
+                    {{#if client_address}}
+                    <p>{{client_address}}</p>
+                    {{/if}}
+                </div>
+                <div class="info-card">
+                    <h4>Consultation Details</h4>
+                    <p><strong>Consultation Period:</strong> {{consultation_period}}</p>
+                    <p><strong>Total Hours:</strong> {{total_hours}} hours</p>
+                    <p><strong>Hourly Rate:</strong> ${{hourly_rate}}</p>
+                    <p><strong>Invoice Date:</strong> {{issue_date}}</p>
+                    <p><strong>Payment Due:</strong> {{due_date}}</p>
+                </div>
+            </div>
+
+            <!-- Consultation Services -->
+            <div class="consultation-details">
+                <div class="consultation-header">
+                    <span>📊</span>
+                    <h3>Consultation Services Breakdown</h3>
+                </div>
+                <div class="consultation-list">
+                    {{#each items}}
+                    <div class="consultation-item">
+                        <div>
+                            <div class="consultation-description">{{description}}</div>
+                            <div class="consultation-type">{{consultation_type}} Session</div>
+                        </div>
+                        <div class="consultation-hours">{{hours}} hrs</div>
+                        <div class="consultation-rate">${{rate}}/hr</div>
+                        <div class="consultation-amount">${{amount}}</div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Totals Section -->
+            <div class="totals-section">
+                <div class="total-row">
+                    <span>Consulting Services:</span>
+                    <span>${{subtotal}}</span>
+                </div>
+                {{#if travel_expenses}}
+                <div class="total-row">
+                    <span>Travel & Expenses:</span>
+                    <span>${{travel_expenses}}</span>
+                </div>
+                {{/if}}
+                {{#if discount_amount}}
+                <div class="total-row">
+                    <span>Professional Discount:</span>
+                    <span>-${{discount_amount}}</span>
+                </div>
+                {{/if}}
+                {{#if tax_amount}}
+                <div class="total-row">
+                    <span>Tax ({{tax_rate}}%):</span>
+                    <span>${{tax_amount}}</span>
+                </div>
+                {{/if}}
+                <div class="total-row">
+                    <span>Total Professional Fee:</span>
+                    <span>${{total_amount}}</span>
+                </div>
+            </div>
+
+            <!-- Crypto Payment Section -->
+            <div class="crypto-payment-section">
+                <div class="crypto-header">
+                    <div class="crypto-icon">💎</div>
+                    <h3>Secure Cryptocurrency Payment</h3>
+                </div>
+                
+                <div class="crypto-details-grid">
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Network</div>
+                        <div class="crypto-detail-value">{{network_name}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Token</div>
+                        <div class="crypto-detail-value">{{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Amount</div>
+                        <div class="crypto-detail-value">{{crypto_amount}} {{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">USD Value</div>
+                        <div class="crypto-detail-value">${{total_amount}}</div>
+                    </div>
+                </div>
+
+                <div class="payment-address">
+                    <div style="margin-bottom: 0.5rem; font-size: 0.8rem; color: #9ca3af;">PAYMENT WALLET ADDRESS</div>
+                    {{recipient_address}}
+                </div>
+
+                {{#if qr_code_url}}
+                <div style="text-align: center; margin-top: 1rem;">
+                    <img src="{{qr_code_url}}" alt="Payment QR Code" style="max-width: 180px; height: auto; border-radius: 12px;">
+                    <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #9ca3af;">Scan with crypto wallet</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="professional-footer">
+            <div class="footer-grid">
+                <div class="footer-section">
+                    <h4>Payment Terms & Professional Standards</h4>
+                    <ul>
+                        <li>Payment due within {{due_days}} days of invoice date</li>
+                        <li>All consulting advice and deliverables are confidential</li>
+                        <li>Late payments subject to 1.5% monthly service charge</li>
+                        <li>Professional liability insurance coverage included</li>
+                        <li>Follow-up consultation (1 hour) included within 30 days</li>
+                        <li>All recommendations based on information provided by client</li>
+                    </ul>
+                </div>
+                <div class="contact-info">
+                    <h4>Professional Contact</h4>
+                    <p><strong>Email:</strong> {{consultant_email}}</p>
+                    <p><strong>Phone:</strong> {{consultant_phone}}</p>
+                    <p><strong>LinkedIn:</strong> {{linkedin_profile}}</p>
+                    {{#if professional_website}}
+                    <p><strong>Website:</strong> {{professional_website}}</p>
+                    {{/if}}
+                    {{#if certifications}}
+                    <div style="margin-top: 1rem;">
+                        <p><strong>Certifications:</strong></p>
+                        {{#each certifications}}
+                        <p style="font-size: 0.9rem; color: #6b7280;">• {{this}}</p>
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+            
+            {{#if confidentiality_notice}}
+            <div style="margin-top: 2rem; padding-top: 1rem; border-top: 2px solid #1e40af; text-align: center;">
+                <p style="color: #6b7280; font-style: italic; font-size: 0.9rem;">{{confidentiality_notice}}</p>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</body>
+</html>

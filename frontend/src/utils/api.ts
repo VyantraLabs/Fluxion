@@ -385,6 +385,169 @@ export const analyticsApi = {
     apiRequest.get(apiEndpoints.analytics.platform),
 };
 
+// Organization API
+export const organizationApi = {
+  getAll: () =>
+    apiRequest.get('/organizations'),
+    
+  getById: (id: string) =>
+    apiRequest.get(`/organizations/${id}`),
+    
+  // Organization activity logs (placeholder endpoint - backend implementation needed)
+  getActivity: async (orgId: string, params?: {
+    limit?: number;
+    offset?: number;
+    type?: string;
+  }) => {
+    try {
+      // Attempt to call the real API endpoint
+      const queryParams: Record<string, string> = {};
+      if (params?.limit) queryParams.limit = params.limit.toString();
+      if (params?.offset) queryParams.offset = params.offset.toString();
+      if (params?.type) queryParams.type = params.type;
+      
+      const queryString = Object.keys(queryParams).length > 0 
+        ? '?' + new URLSearchParams(queryParams).toString() 
+        : '';
+        
+      const response = await apiRequest.get(`/organizations/${orgId}/activity${queryString}`);
+      
+      // Normalize the response format to ensure consistent data structure
+      if (response.success && response.data) {
+        // Handle different response formats from the backend
+        let activities = [];
+        
+        if (response.data.activities && Array.isArray(response.data.activities)) {
+          // Real API format: { success: true, data: { activities: [...] } }
+          activities = response.data.activities;
+        } else if (Array.isArray(response.data)) {
+          // Alternative format: { success: true, data: [...] }
+          activities = response.data;
+        }
+        
+        // Normalize each activity to ensure consistent actor field
+        const normalizedActivities = activities.map((activity: any) => ({
+          ...activity,
+          // Ensure actor property exists (map from 'user' field if needed)
+          actor: activity.actor || activity.user || {
+            id: activity.user_id || 'unknown',
+            display_name: activity.user?.display_name || activity.user?.wallet_address || 'Unknown User',
+            email: activity.user?.email
+          },
+          // Ensure required fields have defaults
+          id: activity.id || `activity_${Date.now()}_${Math.random()}`,
+          type: activity.type || 'unknown',
+          description: activity.description || 'Unknown activity',
+          metadata: activity.metadata || {},
+          created_at: activity.created_at || new Date().toISOString()
+        }));
+        
+        // Return in consistent format
+        return {
+          success: true,
+          data: {
+            activities: normalizedActivities,
+            pagination: response.data.pagination || { hasMore: false }
+          }
+        };
+      }
+      
+      return response;
+    } catch (error: any) {
+      // If endpoint doesn't exist (404), return mock data
+      if (error.status === 404) {
+        console.warn('Organization activity endpoint not implemented, using mock data');
+        const mockActivities = generateMockActivityLogs(orgId, params?.limit || 10);
+        return {
+          success: true,
+          data: {
+            activities: mockActivities,
+            pagination: { hasMore: false }
+          }
+        };
+      }
+      throw error;
+    }
+  },
+  
+  getUsers: (orgId: string) =>
+    apiRequest.get(`/organizations/${orgId}/users`),
+    
+  getStats: (orgId: string) =>
+    apiRequest.get(`/organizations/${orgId}/stats`),
+};
+
+// Mock activity logs generator for development
+const generateMockActivityLogs = (orgId: string, limit: number = 10) => {
+  const actions = [
+    'invoice_created',
+    'invoice_sent',
+    'invoice_paid',
+    'user_invited',
+    'user_joined',
+    'settings_updated',
+    'template_created',
+    'payment_received',
+    'reminder_sent',
+  ];
+  
+  const actorNames = ['John Doe', 'Jane Smith', 'Mike Johnson', 'Sarah Wilson', 'David Brown'];
+  const organizations = ['Acme Corp', 'Tech Startup', 'Design Agency', 'Consulting Firm'];
+  
+  return Array.from({ length: limit }, (_, index) => {
+    const action = actions[Math.floor(Math.random() * actions.length)];
+    const actorName = actorNames[Math.floor(Math.random() * actorNames.length)];
+    const hoursAgo = Math.floor(Math.random() * 48) + 1; // 1-48 hours ago
+    
+    let description = '';
+    let metadata: any = {};
+    
+    switch (action) {
+      case 'invoice_created':
+        const invoiceNum = Math.floor(Math.random() * 1000);
+        description = `Created invoice #INV-${invoiceNum}`;
+        metadata = { invoice_id: `inv_${invoiceNum}`, amount: `$${Math.floor(Math.random() * 5000) + 500}` };
+        break;
+      case 'invoice_sent':
+        description = `Sent invoice to client`;
+        metadata = { recipient: 'client@example.com' };
+        break;
+      case 'invoice_paid':
+        description = `Payment received for invoice`;
+        metadata = { amount: `$${Math.floor(Math.random() * 5000) + 500}` };
+        break;
+      case 'user_invited':
+        description = `Invited new user to organization`;
+        metadata = { email: 'newuser@example.com' };
+        break;
+      case 'user_joined':
+        description = `Joined the organization`;
+        break;
+      case 'settings_updated':
+        description = `Updated organization settings`;
+        metadata = { setting: 'payment_terms' };
+        break;
+      default:
+        description = `Performed ${action.replace('_', ' ')}`;
+    }
+    
+    return {
+      id: `activity_${index + 1}`,
+      organization_id: orgId,
+      organization_name: organizations[Math.floor(Math.random() * organizations.length)],
+      type: action as any, // Cast to satisfy type constraints
+      description,
+      actor: {
+        id: `user_${Math.floor(Math.random() * 5) + 1}`,
+        display_name: actorName,
+        email: `${actorName.toLowerCase().replace(' ', '.')}@example.com`,
+      },
+      metadata,
+      created_at: new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString(),
+    };
+  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+};
+
 // Template API
 export const templateApi = {
   // Template CRUD

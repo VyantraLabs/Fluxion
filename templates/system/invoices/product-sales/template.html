@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Invoice - {{invoice_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            line-height: 1.5;
+            color: #374151;
+            background-color: #f9fafb;
+        }
+        
+        .invoice-container {
+            max-width: 900px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #1f2937 100%);
+            color: white;
+            padding: 2rem;
+        }
+        
+        .header-content {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 2rem;
+            align-items: start;
+        }
+        
+        .company-section h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        
+        .company-section .tagline {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+        
+        .company-details {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .company-details p {
+            margin-bottom: 0.25rem;
+        }
+        
+        .invoice-badge {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .invoice-badge h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .invoice-badge .number {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: #fbbf24;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .order-summary {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-left: 4px solid {{branding.primaryColor}};
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .order-summary h3 {
+            color: {{branding.primaryColor}};
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 1rem;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .summary-label {
+            font-weight: 600;
+            color: #6b7280;
+        }
+        
+        .summary-value {
+            font-weight: 700;
+            color: #1f2937;
+        }
+        
+        .billing-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .billing-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        .billing-card h4 {
+            color: {{branding.primaryColor}};
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .billing-card p {
+            margin-bottom: 0.5rem;
+            color: #4b5563;
+        }
+        
+        .billing-card .highlight {
+            font-weight: 700;
+            color: #1f2937;
+            font-size: 1.1rem;
+        }
+        
+        .products-section {
+            margin-bottom: 2rem;
+        }
+        
+        .products-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .products-header h3 {
+            color: #1f2937;
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        
+        .item-count-badge {
+            background: {{branding.primaryColor}};
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .products-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .products-table th {
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            color: #374151;
+            font-weight: 700;
+            padding: 1rem;
+            text-align: left;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .products-table td {
+            padding: 1.25rem 1rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .products-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .products-table tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+        
+        .product-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .product-image {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, {{branding.primaryColor}}20 0%, #f3f4f6 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: {{branding.primaryColor}};
+        }
+        
+        .product-details h5 {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+        
+        .product-details .sku {
+            font-size: 0.8rem;
+            color: #6b7280;
+            font-family: monospace;
+        }
+        
+        .quantity-cell {
+            text-align: center;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .price-cell,
+        .total-cell {
+            text-align: right;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .total-cell {
+            font-size: 1.1rem;
+            color: {{branding.primaryColor}};
+        }
+        
+        .order-totals {
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-left: auto;
+            width: 400px;
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #d1d5db;
+        }
+        
+        .total-row:last-child {
+            border-bottom: none;
+            border-top: 3px solid {{branding.primaryColor}};
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: {{branding.primaryColor}};
+        }
+        
+        .total-label {
+            font-weight: 600;
+            color: #4b5563;
+        }
+        
+        .total-value {
+            font-weight: 700;
+            color: #1f2937;
+        }
+        
+        .crypto-payment {
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .crypto-payment::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 150px;
+            height: 150px;
+            background: radial-gradient(circle, {{branding.primaryColor}}30 0%, transparent 70%);
+            border-radius: 50%;
+        }
+        
+        .crypto-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-badge {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #fbbf24 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+        
+        .crypto-header h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        
+        .payment-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .payment-detail {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .payment-detail-label {
+            font-size: 0.8rem;
+            color: #d1d5db;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .payment-detail-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+        }
+        
+        .wallet-address-section {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .wallet-address-section h4 {
+            font-size: 0.9rem;
+            color: #d1d5db;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+        }
+        
+        .wallet-address {
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            word-break: break-all;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+        
+        .footer {
+            background: #f9fafb;
+            padding: 2rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+        
+        .terms-section h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .terms-list {
+            list-style: none;
+        }
+        
+        .terms-list li {
+            margin-bottom: 0.5rem;
+            padding-left: 1rem;
+            position: relative;
+            color: #4b5563;
+        }
+        
+        .terms-list li::before {
+            content: '✓';
+            color: {{branding.primaryColor}};
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        .contact-section {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        .contact-section h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .contact-section p {
+            margin-bottom: 0.5rem;
+            color: #4b5563;
+        }
+        
+        @media print {
+            body { background-color: white; }
+            .invoice-container { box-shadow: none; margin: 0; }
+        }
+        
+        @media (max-width: 768px) {
+            .invoice-container { margin: 1rem; }
+            .header-content { grid-template-columns: 1fr; gap: 1rem; }
+            .billing-section { grid-template-columns: 1fr; }
+            .products-table { font-size: 0.8rem; }
+            .products-table th, .products-table td { padding: 0.75rem 0.5rem; }
+            .order-totals { width: 100%; }
+            .payment-details-grid { grid-template-columns: 1fr; }
+            .footer-content { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="company-section">
+                    <h1>{{branding.companyName}}</h1>
+                    <div class="tagline">Premium Products & Solutions</div>
+                    <div class="company-details">
+                        <p>📍 {{branding.companyAddress}}</p>
+                        <p>📞 {{branding.companyPhone}} | 📧 {{branding.companyEmail}}</p>
+                        <p>🌐 {{branding.website}}</p>
+                    </div>
+                </div>
+                <div class="invoice-badge">
+                    <h2>INVOICE</h2>
+                    <div class="number">#{{invoice_number}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Order Summary -->
+            <div class="order-summary">
+                <h3>📦 Order Summary</h3>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Order ID:</span>
+                        <span class="summary-value">{{order_id}}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Order Date:</span>
+                        <span class="summary-value">{{purchase_date}}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Invoice Date:</span>
+                        <span class="summary-value">{{issue_date}}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Due Date:</span>
+                        <span class="summary-value">{{due_date}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Billing Information -->
+            <div class="billing-section">
+                <div class="billing-card">
+                    <h4>🏢 Bill To</h4>
+                    <p class="highlight">{{client_name}}</p>
+                    <p>{{client_email}}</p>
+                    {{#if client_company}}
+                    <p>{{client_company}}</p>
+                    {{/if}}
+                    {{#if billing_address}}
+                    <p>{{billing_address}}</p>
+                    {{/if}}
+                </div>
+                <div class="billing-card">
+                    <h4>🚚 Ship To</h4>
+                    {{#if shipping_address}}
+                    <p class="highlight">{{shipping_name}}</p>
+                    <p>{{shipping_address}}</p>
+                    <p>{{shipping_city}}, {{shipping_state}} {{shipping_zip}}</p>
+                    <p>{{shipping_country}}</p>
+                    {{else}}
+                    <p><em>Same as billing address</em></p>
+                    {{/if}}
+                </div>
+            </div>
+
+            <!-- Products -->
+            <div class="products-section">
+                <div class="products-header">
+                    <h3>Products Ordered</h3>
+                    <span class="item-count-badge">{{items.length}} items</span>
+                </div>
+                
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Quantity</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#each items}}
+                        <tr>
+                            <td>
+                                <div class="product-info">
+                                    <div class="product-image">📦</div>
+                                    <div class="product-details">
+                                        <h5>{{name}}</h5>
+                                        <div class="sku">SKU: {{sku}}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="quantity-cell">{{quantity}}</td>
+                            <td class="price-cell">${{unit_price}}</td>
+                            <td class="total-cell">${{line_total}}</td>
+                        </tr>
+                        {{/each}}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Order Totals -->
+            <div class="order-totals">
+                <div class="total-row">
+                    <span class="total-label">Subtotal:</span>
+                    <span class="total-value">${{subtotal}}</span>
+                </div>
+                {{#if shipping_cost}}
+                <div class="total-row">
+                    <span class="total-label">Shipping:</span>
+                    <span class="total-value">${{shipping_cost}}</span>
+                </div>
+                {{/if}}
+                {{#if discount_amount}}
+                <div class="total-row">
+                    <span class="total-label">Discount:</span>
+                    <span class="total-value">-${{discount_amount}}</span>
+                </div>
+                {{/if}}
+                {{#if tax_amount}}
+                <div class="total-row">
+                    <span class="total-label">Tax ({{tax_rate}}%):</span>
+                    <span class="total-value">${{tax_amount}}</span>
+                </div>
+                {{/if}}
+                <div class="total-row">
+                    <span class="total-label">Total:</span>
+                    <span class="total-value">${{total_amount}}</span>
+                </div>
+            </div>
+
+            <!-- Crypto Payment -->
+            <div class="crypto-payment">
+                <div class="crypto-header">
+                    <div class="crypto-badge">₿</div>
+                    <h3>Cryptocurrency Payment</h3>
+                </div>
+                
+                <div class="payment-details-grid">
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Network</div>
+                        <div class="payment-detail-value">{{network_name}}</div>
+                    </div>
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Token</div>
+                        <div class="payment-detail-value">{{token_symbol}}</div>
+                    </div>
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Amount</div>
+                        <div class="payment-detail-value">{{crypto_amount}} {{token_symbol}}</div>
+                    </div>
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">USD Value</div>
+                        <div class="payment-detail-value">${{total_amount}}</div>
+                    </div>
+                </div>
+
+                <div class="wallet-address-section">
+                    <h4>Payment Address</h4>
+                    <div class="wallet-address">{{recipient_address}}</div>
+                    {{#if qr_code_url}}
+                    <img src="{{qr_code_url}}" alt="Payment QR Code" style="max-width: 200px; height: auto; border-radius: 8px;">
+                    <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #d1d5db;">Scan with your crypto wallet</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-content">
+                <div class="terms-section">
+                    <h4>📋 Terms & Conditions</h4>
+                    <ul class="terms-list">
+                        <li>Payment due within {{due_days}} days of invoice date</li>
+                        <li>Products shipped upon payment confirmation</li>
+                        <li>Returns accepted within 30 days with original packaging</li>
+                        <li>Warranty coverage as per individual product terms</li>
+                        <li>Shipping costs are non-refundable</li>
+                        <li>Customer responsible for return shipping costs</li>
+                    </ul>
+                </div>
+                <div class="contact-section">
+                    <h4>📞 Support</h4>
+                    <p><strong>Sales:</strong> {{branding.companyEmail}}</p>
+                    <p><strong>Support:</strong> {{support_email}}</p>
+                    <p><strong>Phone:</strong> {{branding.companyPhone}}</p>
+                    <p><strong>Hours:</strong> Mon-Fri 9AM-6PM</p>
+                    
+                    {{#if tracking_number}}
+                    <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 6px;">
+                        <p><strong>Tracking #:</strong></p>
+                        <p style="font-family: monospace; font-weight: bold;">{{tracking_number}}</p>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+            
+            {{#if footer_note}}
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; text-align: center;">
+                <p style="color: #6b7280; font-style: italic;">{{footer_note}}</p>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</body>
+</html>

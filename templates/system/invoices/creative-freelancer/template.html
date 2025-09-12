@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creative Invoice - {{invoice_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .invoice-container {
+            max-width: 850px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            position: relative;
+        }
+        
+        .invoice-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: linear-gradient(90deg, {{branding.primaryColor}} 0%, {{branding.secondaryColor}} 100%);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            padding: 3rem 2rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, {{branding.primaryColor}}20, {{branding.secondaryColor}}20);
+            z-index: 1;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .brand-logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, {{branding.secondaryColor}} 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .company-info h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 0.25rem;
+        }
+        
+        .company-tagline {
+            color: {{branding.primaryColor}};
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .invoice-meta {
+            text-align: right;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .invoice-meta h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: {{branding.primaryColor}};
+            margin-bottom: 0.5rem;
+        }
+        
+        .invoice-number {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #64748b;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .project-hero {
+            background: linear-gradient(135deg, {{branding.primaryColor}}10 0%, {{branding.secondaryColor}}10 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            border: 2px solid {{branding.primaryColor}}20;
+        }
+        
+        .project-hero h3 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: {{branding.primaryColor}};
+            margin-bottom: 0.5rem;
+        }
+        
+        .project-hero p {
+            color: #64748b;
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .client-info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .info-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 1.5rem;
+            border-left: 4px solid {{branding.primaryColor}};
+        }
+        
+        .info-card h4 {
+            color: {{branding.primaryColor}};
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+        }
+        
+        .info-card p {
+            margin-bottom: 0.25rem;
+            color: #4a5568;
+        }
+        
+        .info-card .highlight {
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .deliverables-section {
+            background: white;
+            border-radius: 16px;
+            border: 2px solid #e2e8f0;
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+        
+        .deliverables-header {
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, {{branding.secondaryColor}} 100%);
+            color: white;
+            padding: 1.5rem;
+        }
+        
+        .deliverables-header h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        .deliverables-list {
+            padding: 0;
+        }
+        
+        .deliverable-item {
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            transition: background-color 0.2s;
+        }
+        
+        .deliverable-item:hover {
+            background-color: #f8fafc;
+        }
+        
+        .deliverable-item:last-child {
+            border-bottom: none;
+        }
+        
+        .deliverable-description {
+            font-weight: 500;
+            color: #1a1a1a;
+        }
+        
+        .deliverable-details {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+        
+        .deliverable-quantity,
+        .deliverable-rate,
+        .deliverable-amount {
+            text-align: right;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .deliverable-amount {
+            font-size: 1.1rem;
+            color: {{branding.primaryColor}};
+        }
+        
+        .creative-totals {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-left: auto;
+            width: 350px;
+            border: 2px solid {{branding.primaryColor}}20;
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #cbd5e0;
+        }
+        
+        .total-row:last-child {
+            border-bottom: none;
+            border-top: 3px solid {{branding.primaryColor}};
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: {{branding.primaryColor}};
+        }
+        
+        .crypto-payment-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d3748 100%);
+            color: white;
+            border-radius: 20px;
+            padding: 2rem;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .crypto-payment-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, {{branding.primaryColor}}30 0%, transparent 70%);
+        }
+        
+        .crypto-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .crypto-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, {{branding.secondaryColor}} 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .crypto-header h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        
+        .crypto-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .crypto-detail {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+        
+        .crypto-detail-label {
+            font-size: 0.8rem;
+            color: #a0aec0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.25rem;
+        }
+        
+        .crypto-detail-value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .payment-address {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            word-break: break-all;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .creative-footer {
+            background: #f8fafc;
+            padding: 2rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+        
+        .footer-section h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .footer-section ul {
+            list-style: none;
+        }
+        
+        .footer-section li {
+            margin-bottom: 0.5rem;
+            padding-left: 1rem;
+            position: relative;
+        }
+        
+        .footer-section li::before {
+            content: '•';
+            color: {{branding.primaryColor}};
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        .contact-info {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            
+            .invoice-container {
+                box-shadow: none;
+                margin: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .invoice-container {
+                margin: 1rem;
+                border-radius: 16px;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+            
+            .invoice-meta {
+                text-align: left;
+            }
+            
+            .client-info-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .deliverable-item {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+                text-align: left;
+            }
+            
+            .crypto-details-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="header-content">
+                <div class="brand-section">
+                    <div class="brand-logo">
+                        {{branding.companyName.[0]}}
+                    </div>
+                    <div class="company-info">
+                        <h1>{{branding.companyName}}</h1>
+                        <div class="company-tagline">Creative Services</div>
+                    </div>
+                </div>
+                <div class="invoice-meta">
+                    <h2>INVOICE</h2>
+                    <div class="invoice-number">#{{invoice_number}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Project Hero Section -->
+            <div class="project-hero">
+                <h3>{{project_name}}</h3>
+                <p>{{project_description}}</p>
+            </div>
+
+            <!-- Client Information -->
+            <div class="client-info-section">
+                <div class="info-card">
+                    <h4>Client Details</h4>
+                    <p class="highlight">{{client_name}}</p>
+                    <p>{{client_email}}</p>
+                    {{#if client_company}}
+                    <p>{{client_company}}</p>
+                    {{/if}}
+                    {{#if client_address}}
+                    <p>{{client_address}}</p>
+                    {{/if}}
+                </div>
+                <div class="info-card">
+                    <h4>Project Timeline</h4>
+                    <p><strong>Start Date:</strong> {{project_start_date}}</p>
+                    <p><strong>Completion:</strong> {{project_end_date}}</p>
+                    <p><strong>Invoice Date:</strong> {{issue_date}}</p>
+                    <p><strong>Due Date:</strong> {{due_date}}</p>
+                </div>
+            </div>
+
+            <!-- Deliverables Section -->
+            <div class="deliverables-section">
+                <div class="deliverables-header">
+                    <h3>Creative Deliverables</h3>
+                </div>
+                <div class="deliverables-list">
+                    {{#each items}}
+                    <div class="deliverable-item">
+                        <div>
+                            <div class="deliverable-description">{{description}}</div>
+                            <div class="deliverable-details">{{details}}</div>
+                        </div>
+                        <div class="deliverable-quantity">{{quantity}}</div>
+                        <div class="deliverable-rate">${{rate}}</div>
+                        <div class="deliverable-amount">${{amount}}</div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Totals Section -->
+            <div class="creative-totals">
+                <div class="total-row">
+                    <span>Creative Services:</span>
+                    <span>${{subtotal}}</span>
+                </div>
+                {{#if discount_amount}}
+                <div class="total-row">
+                    <span>Discount:</span>
+                    <span>-${{discount_amount}}</span>
+                </div>
+                {{/if}}
+                {{#if tax_amount}}
+                <div class="total-row">
+                    <span>Tax ({{tax_rate}}%):</span>
+                    <span>${{tax_amount}}</span>
+                </div>
+                {{/if}}
+                <div class="total-row">
+                    <span>Total Due:</span>
+                    <span>${{total_amount}}</span>
+                </div>
+            </div>
+
+            <!-- Crypto Payment Section -->
+            <div class="crypto-payment-card">
+                <div class="crypto-header">
+                    <div class="crypto-icon">₿</div>
+                    <h3>Cryptocurrency Payment</h3>
+                </div>
+                
+                <div class="crypto-details-grid">
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Network</div>
+                        <div class="crypto-detail-value">{{network_name}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Token</div>
+                        <div class="crypto-detail-value">{{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Amount</div>
+                        <div class="crypto-detail-value">{{crypto_amount}} {{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">USD Value</div>
+                        <div class="crypto-detail-value">${{total_amount}}</div>
+                    </div>
+                </div>
+
+                <div class="payment-address">
+                    <div style="margin-bottom: 0.5rem; font-size: 0.8rem; color: #a0aec0;">PAYMENT ADDRESS</div>
+                    {{recipient_address}}
+                </div>
+
+                {{#if qr_code_url}}
+                <div style="text-align: center; margin-top: 1rem;">
+                    <img src="{{qr_code_url}}" alt="Payment QR Code" style="max-width: 180px; height: auto; border-radius: 12px;">
+                    <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #a0aec0;">Scan with crypto wallet</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="creative-footer">
+            <div class="footer-grid">
+                <div class="footer-section">
+                    <h4>📋 Payment Terms & Conditions</h4>
+                    <ul>
+                        <li>Payment is due within {{due_days}} days of invoice date</li>
+                        <li>Late payments subject to 1.5% monthly service charge</li>
+                        <li>All work remains property of {{branding.companyName}} until payment</li>
+                        <li>Revisions beyond scope will incur additional charges</li>
+                        <li>Final files delivered upon payment confirmation</li>
+                    </ul>
+                </div>
+                <div class="contact-info">
+                    <h4>💬 Questions?</h4>
+                    <p><strong>Email:</strong> {{branding.companyEmail}}</p>
+                    <p><strong>Phone:</strong> {{branding.companyPhone}}</p>
+                    <p><strong>Website:</strong> {{branding.website}}</p>
+                    
+                    {{#if social_links}}
+                    <div style="margin-top: 1rem;">
+                        <p><strong>Follow Us:</strong></p>
+                        {{#each social_links}}
+                        <p>{{platform}}: {{url}}</p>
+                        {{/each}}
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+            
+            {{#if footer_note}}
+            <div style="margin-top: 2rem; padding-top: 1rem; border-top: 2px solid {{branding.primaryColor}}20; text-align: center;">
+                <p style="color: #64748b; font-style: italic;">{{footer_note}}</p>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</body>
+</html>

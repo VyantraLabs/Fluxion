@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription Invoice - {{invoice_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            min-height: 100vh;
+        }
+        
+        .invoice-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #3b82f6 100%);
+            color: white;
+            padding: 2.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -25%;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .subscription-brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .brand-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .company-info h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+        
+        .subscription-label {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-block;
+        }
+        
+        .invoice-meta {
+            text-align: right;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .invoice-meta h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .invoice-number {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .subscription-overview {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .plan-badge {
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #3b82f6 100%);
+            color: white;
+            padding: 0.5rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+        
+        .billing-period {
+            color: #64748b;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subscription-amount {
+            font-size: 3rem;
+            font-weight: 900;
+            color: {{branding.primaryColor}};
+            margin-bottom: 0.5rem;
+        }
+        
+        .amount-period {
+            color: #64748b;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        
+        .account-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .detail-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border-left: 4px solid {{branding.primaryColor}};
+        }
+        
+        .detail-card h4 {
+            color: {{branding.primaryColor}};
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .detail-card p {
+            margin-bottom: 0.5rem;
+            color: #4b5563;
+        }
+        
+        .detail-card .primary-text {
+            font-weight: 700;
+            color: #1f2937;
+            font-size: 1.1rem;
+        }
+        
+        .billing-breakdown {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+        
+        .breakdown-header {
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .breakdown-header h3 {
+            color: #1f2937;
+            font-size: 1.3rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .breakdown-content {
+            padding: 0;
+        }
+        
+        .billing-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .billing-item:last-child {
+            border-bottom: none;
+        }
+        
+        .billing-item:nth-child(even) {
+            background-color: #fafafa;
+        }
+        
+        .item-details {
+            flex-grow: 1;
+        }
+        
+        .item-name {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+        
+        .item-description {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        
+        .item-period {
+            color: #6b7280;
+            font-size: 0.9rem;
+            min-width: 150px;
+            text-align: center;
+        }
+        
+        .item-amount {
+            font-weight: 700;
+            color: #1f2937;
+            font-size: 1.1rem;
+            min-width: 100px;
+            text-align: right;
+        }
+        
+        .totals-section {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border: 2px solid {{branding.primaryColor}}30;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-left: auto;
+            width: 400px;
+        }
+        
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #cbd5e0;
+        }
+        
+        .total-row:last-child {
+            border-bottom: none;
+            border-top: 3px solid {{branding.primaryColor}};
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: {{branding.primaryColor}};
+        }
+        
+        .next-billing {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+        
+        .next-billing h4 {
+            color: #92400e;
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .next-billing p {
+            color: #78350f;
+            font-size: 1rem;
+        }
+        
+        .next-date {
+            font-weight: 700;
+            color: #92400e;
+        }
+        
+        .crypto-payment-section {
+            background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .crypto-payment-section::before {
+            content: '';
+            position: absolute;
+            top: -30%;
+            left: -20%;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, {{branding.primaryColor}}25 0%, transparent 70%);
+            border-radius: 50%;
+        }
+        
+        .crypto-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #3b82f6 100%);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+        }
+        
+        .crypto-header h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        
+        .crypto-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .crypto-detail {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .crypto-detail-label {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .crypto-detail-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: white;
+        }
+        
+        .payment-address {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            word-break: break-all;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .footer {
+            background: #f9fafb;
+            padding: 2rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        .support-section h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .support-section ul {
+            list-style: none;
+        }
+        
+        .support-section li {
+            margin-bottom: 0.5rem;
+            padding-left: 1rem;
+            position: relative;
+            color: #4b5563;
+        }
+        
+        .support-section li::before {
+            content: '→';
+            color: {{branding.primaryColor}};
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        .account-info {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        .account-info h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .account-info p {
+            margin-bottom: 0.5rem;
+            color: #4b5563;
+        }
+        
+        @media print {
+            body { background: white; }
+            .invoice-container { box-shadow: none; margin: 0; }
+        }
+        
+        @media (max-width: 768px) {
+            .invoice-container { margin: 1rem; }
+            .header-content { flex-direction: column; gap: 1rem; }
+            .invoice-meta { text-align: left; }
+            .account-details { grid-template-columns: 1fr; }
+            .totals-section { width: 100%; }
+            .crypto-details { grid-template-columns: 1fr; }
+            .footer-content { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="subscription-brand">
+                    <div class="brand-icon">🚀</div>
+                    <div class="company-info">
+                        <h1>{{branding.companyName}}</h1>
+                        <span class="subscription-label">SaaS Platform</span>
+                    </div>
+                </div>
+                <div class="invoice-meta">
+                    <h2>INVOICE</h2>
+                    <div class="invoice-number">#{{invoice_number}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Subscription Overview -->
+            <div class="subscription-overview">
+                <div class="plan-badge">{{subscription_plan_name}}</div>
+                <div class="billing-period">{{billing_period_start}} - {{billing_period_end}}</div>
+                <div class="subscription-amount">${{total_amount}}</div>
+                <div class="amount-period">per {{billing_frequency}}</div>
+            </div>
+
+            <!-- Account Details -->
+            <div class="account-details">
+                <div class="detail-card">
+                    <h4>👤 Account Information</h4>
+                    <p class="primary-text">{{client_name}}</p>
+                    <p>{{client_email}}</p>
+                    {{#if client_company}}
+                    <p>{{client_company}}</p>
+                    {{/if}}
+                    <p><strong>Account ID:</strong> {{account_id}}</p>
+                </div>
+                <div class="detail-card">
+                    <h4>📅 Billing Information</h4>
+                    <p><strong>Invoice Date:</strong> {{issue_date}}</p>
+                    <p><strong>Due Date:</strong> {{due_date}}</p>
+                    <p><strong>Billing Cycle:</strong> {{billing_frequency}}</p>
+                    <p><strong>Status:</strong> <span style="color: {{branding.primaryColor}}; font-weight: 600;">{{subscription_status}}</span></p>
+                </div>
+            </div>
+
+            <!-- Billing Breakdown -->
+            <div class="billing-breakdown">
+                <div class="breakdown-header">
+                    <h3>💳 Billing Breakdown</h3>
+                </div>
+                <div class="breakdown-content">
+                    {{#each billing_items}}
+                    <div class="billing-item">
+                        <div class="item-details">
+                            <div class="item-name">{{name}}</div>
+                            <div class="item-description">{{description}}</div>
+                        </div>
+                        <div class="item-period">{{billing_period}}</div>
+                        <div class="item-amount">${{amount}}</div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Totals -->
+            <div class="totals-section">
+                <div class="total-row">
+                    <span>Subscription:</span>
+                    <span>${{subtotal}}</span>
+                </div>
+                {{#if prorate_adjustment}}
+                <div class="total-row">
+                    <span>Proration:</span>
+                    <span>${{prorate_adjustment}}</span>
+                </div>
+                {{/if}}
+                {{#if credits_applied}}
+                <div class="total-row">
+                    <span>Credits Applied:</span>
+                    <span>-${{credits_applied}}</span>
+                </div>
+                {{/if}}
+                {{#if tax_amount}}
+                <div class="total-row">
+                    <span>Tax ({{tax_rate}}%):</span>
+                    <span>${{tax_amount}}</span>
+                </div>
+                {{/if}}
+                <div class="total-row">
+                    <span>Total:</span>
+                    <span>${{total_amount}}</span>
+                </div>
+            </div>
+
+            <!-- Next Billing -->
+            {{#if next_billing_date}}
+            <div class="next-billing">
+                <h4>📆 Next Billing Date</h4>
+                <p>Your next {{billing_frequency}} charge of <span class="next-date">${{next_billing_amount}}</span> will be processed on <span class="next-date">{{next_billing_date}}</span></p>
+            </div>
+            {{/if}}
+
+            <!-- Crypto Payment -->
+            <div class="crypto-payment-section">
+                <div class="crypto-header">
+                    <div class="crypto-icon">₿</div>
+                    <h3>Cryptocurrency Payment</h3>
+                </div>
+                
+                <div class="crypto-details">
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Network</div>
+                        <div class="crypto-detail-value">{{network_name}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Token</div>
+                        <div class="crypto-detail-value">{{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Amount</div>
+                        <div class="crypto-detail-value">{{crypto_amount}} {{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">USD Value</div>
+                        <div class="crypto-detail-value">${{total_amount}}</div>
+                    </div>
+                </div>
+
+                <div class="payment-address">
+                    <div style="margin-bottom: 1rem; font-size: 0.8rem; color: #9ca3af;">PAYMENT ADDRESS</div>
+                    {{recipient_address}}
+                </div>
+
+                {{#if qr_code_url}}
+                <div style="text-align: center; margin-top: 1rem;">
+                    <img src="{{qr_code_url}}" alt="Payment QR Code" style="max-width: 200px; height: auto; border-radius: 12px;">
+                    <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #9ca3af;">Scan to pay with crypto wallet</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-content">
+                <div class="support-section">
+                    <h4>🛠 Support & Terms</h4>
+                    <ul>
+                        <li>Payment due within {{due_days}} days of invoice date</li>
+                        <li>Service suspension may occur for overdue accounts</li>
+                        <li>Subscription automatically renews unless cancelled</li>
+                        <li>Pro-rated charges apply for mid-cycle changes</li>
+                        <li>Refunds subject to our cancellation policy</li>
+                        <li>Questions? Contact our billing support team</li>
+                    </ul>
+                </div>
+                <div class="account-info">
+                    <h4>📞 Need Help?</h4>
+                    <p><strong>Billing Support:</strong> {{billing_email}}</p>
+                    <p><strong>Technical Support:</strong> {{support_email}}</p>
+                    <p><strong>Phone:</strong> {{branding.companyPhone}}</p>
+                    <p><strong>Hours:</strong> 24/7 Online Support</p>
+                    
+                    <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 6px;">
+                        <p><strong>Account Dashboard:</strong></p>
+                        <p style="color: {{branding.primaryColor}}; font-weight: 600;">{{account_dashboard_url}}</p>
+                    </div>
+                </div>
+            </div>
+            
+            {{#if footer_note}}
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; text-align: center;">
+                <p style="color: #6b7280; font-style: italic;">{{footer_note}}</p>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</body>
+</html>

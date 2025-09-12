@@ -149,6 +149,8 @@ export interface OrganizationContextState {
 
 export interface OrganizationContextActions {
   setActiveOrganization: (org: Organization | null) => void;
+  enterOrganization: (org: Organization) => void;
+  exitOrganization: () => void;
   refreshOrganizations: () => Promise<void>;
   getOrganizationUsers: (orgId?: string) => Promise<OrganizationUser[]>;
   inviteUser: (data: InviteUserRequest) => Promise<void>;

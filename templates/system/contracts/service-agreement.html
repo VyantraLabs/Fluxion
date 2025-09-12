@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Agreement - {{contract_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Times New Roman', serif;
+            line-height: 1.8;
+            color: #1a1a1a;
+            background: white;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .contract-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 3px solid #1e40af;
+        }
+        
+        .contract-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #1e40af;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .contract-subtitle {
+            font-size: 1.2rem;
+            color: #4b5563;
+            margin-bottom: 0.5rem;
+        }
+        
+        .contract-number {
+            font-size: 1rem;
+            color: #6b7280;
+        }
+        
+        .parties-section {
+            margin-bottom: 2rem;
+            background: #f8fafc;
+            padding: 2rem;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #1e40af;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .party-info {
+            margin-bottom: 1.5rem;
+        }
+        
+        .party-title {
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+            text-decoration: underline;
+        }
+        
+        .contract-content {
+            margin-bottom: 2rem;
+        }
+        
+        .article {
+            margin-bottom: 2rem;
+        }
+        
+        .article-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #1e40af;
+            margin-bottom: 1rem;
+            text-decoration: underline;
+        }
+        
+        .article-content {
+            text-align: justify;
+            margin-bottom: 1rem;
+        }
+        
+        .subsection {
+            margin: 1rem 0;
+            padding-left: 1rem;
+        }
+        
+        .subsection-title {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .signature-section {
+            margin-top: 3rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+        
+        .signature-block {
+            text-align: center;
+        }
+        
+        .signature-line {
+            border-bottom: 2px solid #1a1a1a;
+            width: 100%;
+            height: 3rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .signature-label {
+            font-weight: bold;
+            margin-bottom: 2rem;
+        }
+        
+        .date-line {
+            border-bottom: 1px solid #1a1a1a;
+            width: 150px;
+            height: 2rem;
+            margin: 1rem auto;
+        }
+        
+        .witness-section {
+            margin-top: 3rem;
+            text-align: center;
+        }
+        
+        .legal-notice {
+            margin-top: 3rem;
+            padding: 1rem;
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #92400e;
+        }
+        
+        @media print {
+            body {
+                margin: 0;
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="contract-header">
+        <h1 class="contract-title">Service Agreement</h1>
+        <div class="contract-subtitle">Professional Services Contract</div>
+        <div class="contract-number">Agreement No: {{contract_number}}</div>
+    </div>
+
+    <div class="parties-section">
+        <h2 class="section-title">Parties to this Agreement</h2>
+        
+        <div class="party-info">
+            <div class="party-title">Service Provider:</div>
+            <p>{{provider_name}}</p>
+            <p>{{provider_address}}</p>
+            <p>{{provider_email}} | {{provider_phone}}</p>
+        </div>
+        
+        <div class="party-info">
+            <div class="party-title">Client:</div>
+            <p>{{client_name}}</p>
+            <p>{{client_address}}</p>
+            <p>{{client_email}} | {{client_phone}}</p>
+        </div>
+    </div>
+
+    <div class="contract-content">
+        <div class="article">
+            <h3 class="article-title">Article 1: Services to be Provided</h3>
+            <div class="article-content">
+                {{service_description}}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">1.1 Scope of Work:</div>
+                <p>The Service Provider agrees to provide the following services:</p>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    {{#each scope_items}}
+                    <li>{{this}}</li>
+                    {{/each}}
+                </ul>
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">1.2 Performance Standards:</div>
+                <p>All services shall be performed in a professional manner consistent with industry standards and best practices.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 2: Term and Duration</h3>
+            <div class="article-content">
+                This Agreement shall commence on {{start_date}} and shall continue for a period of {{contract_duration}}, unless terminated earlier in accordance with the provisions herein.
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">2.1 Renewal:</div>
+                <p>This Agreement may be renewed by mutual written consent of both parties.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 3: Compensation and Payment Terms</h3>
+            <div class="article-content">
+                In consideration for the services provided, the Client agrees to pay the Service Provider the total amount of ${{total_contract_value}}.
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">3.1 Payment Schedule:</div>
+                <p>{{payment_schedule}}</p>
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">3.2 Late Payment:</div>
+                <p>Payments not received within {{payment_terms_days}} days of the invoice date shall incur a late fee of {{late_fee_percentage}}% per month.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 4: Responsibilities and Obligations</h3>
+            
+            <div class="subsection">
+                <div class="subsection-title">4.1 Service Provider Obligations:</div>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li>Perform services with professional competence and diligence</li>
+                    <li>Meet agreed-upon deadlines and milestones</li>
+                    <li>Maintain confidentiality of client information</li>
+                    <li>Provide regular progress updates</li>
+                </ul>
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">4.2 Client Obligations:</div>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li>Provide necessary information and access</li>
+                    <li>Make timely payments as specified</li>
+                    <li>Respond promptly to service provider requests</li>
+                    <li>Provide feedback in a timely manner</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 5: Intellectual Property</h3>
+            <div class="article-content">
+                {{intellectual_property_terms}}
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 6: Confidentiality</h3>
+            <div class="article-content">
+                Both parties acknowledge that they may have access to confidential information. Each party agrees to maintain the confidentiality of such information and not disclose it to third parties without prior written consent.
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 7: Termination</h3>
+            <div class="article-content">
+                {{termination_clause}}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">7.1 Termination for Convenience:</div>
+                <p>Either party may terminate this Agreement with {{termination_notice_days}} days written notice.</p>
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">7.2 Termination for Cause:</div>
+                <p>Either party may terminate immediately upon material breach of this Agreement by the other party.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 8: Limitation of Liability</h3>
+            <div class="article-content">
+                The Service Provider's liability shall be limited to the total amount paid under this Agreement. Neither party shall be liable for indirect, incidental, or consequential damages.
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 9: Governing Law</h3>
+            <div class="article-content">
+                This Agreement shall be governed by the laws of {{governing_jurisdiction}} without regard to conflict of law principles.
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">Article 10: Entire Agreement</h3>
+            <div class="article-content">
+                This Agreement constitutes the entire agreement between the parties and supersedes all prior negotiations, representations, or agreements relating to the subject matter herein.
+            </div>
+        </div>
+    </div>
+
+    <div class="signature-section">
+        <div class="signature-block">
+            <div class="signature-line"></div>
+            <div class="signature-label">Service Provider Signature</div>
+            <p>{{provider_name}}</p>
+            <div class="date-line"></div>
+            <p>Date</p>
+        </div>
+        
+        <div class="signature-block">
+            <div class="signature-line"></div>
+            <div class="signature-label">Client Signature</div>
+            <p>{{client_name}}</p>
+            <div class="date-line"></div>
+            <p>Date</p>
+        </div>
+    </div>
+
+    {{#if witness_required}}
+    <div class="witness-section">
+        <h3 style="margin-bottom: 2rem;">Witness</h3>
+        <div class="signature-block" style="max-width: 300px; margin: 0 auto;">
+            <div class="signature-line"></div>
+            <div class="signature-label">Witness Signature</div>
+            <div class="date-line"></div>
+            <p>Date</p>
+        </div>
+    </div>
+    {{/if}}
+
+    <div class="legal-notice">
+        <strong>Legal Notice:</strong> This is a legally binding contract. Both parties are advised to review all terms carefully and seek legal counsel if needed before signing. This agreement was generated on {{agreement_date}}.
+    </div>
+</body>
+</html>

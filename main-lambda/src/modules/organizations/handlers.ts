@@ -1095,4 +1095,216 @@ router.get('/summary',
   })
 );
 
+/**
+ * @swagger
+ * /organizations/{organizationId}/activity:
+ *   get:
+ *     tags:
+ *       - Organizations
+ *     summary: Get organization activity logs
+ *     description: |
+ *       Returns activity logs for the specified organization.
+ *       Requires appropriate permissions to view organization activity.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: organizationId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ulid
+ *         description: The organization ID
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Maximum number of activity logs to return
+ *       - name: offset
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of activity logs to skip
+ *     responses:
+ *       200:
+ *         description: Organization activity logs retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     activities:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           action:
+ *                             type: string
+ *                           entity_type:
+ *                             type: string
+ *                           entity_id:
+ *                             type: string
+ *                           user_id:
+ *                             type: string
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               wallet_address:
+ *                                 type: string
+ *                               display_name:
+ *                                 type: string
+ *                           metadata:
+ *                             type: object
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         offset:
+ *                           type: integer
+ */
+router.get('/:organizationId/activity',
+  asyncHandler(async (req: Request, res: Response) => {
+    const tenantContext = getTenantContext(req);
+    const { organizationId } = req.params;
+    const { limit = 20, offset = 0 } = req.query;
+    
+    // Validate organizationId format (ULID)
+    if (!organizationId || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(organizationId)) {
+      return res.error('INVALID_REQUEST', 'Invalid organization ID format. Must be a valid ULID.', 400);
+    }
+    
+    try {
+      const walletAddress = req.context!.walletAddress!;
+      const authUser = await usersService.getUserByWallet(tenantContext, walletAddress);
+      
+      // Check if user has permission to view organization activity
+      let hasPermission = false;
+      
+      if (organizationId === tenantContext.tenantId) {
+        // Same organization - check basic permissions
+        hasPermission = await rbacService.hasPermission(
+          authUser.id,
+          ['org:activity:read', 'org:audit:read', 'activity:read'],
+          { requireAll: false, organizationId, allowSystemOverride: true }
+        );
+      } else {
+        // Different organization - check cross-org permissions
+        hasPermission = await rbacService.hasPermission(
+          authUser.id,
+          ['system:cross_tenant', 'system:admin', 'org:activity:read'],
+          { requireAll: false, organizationId, allowSystemOverride: true }
+        );
+        
+        if (!hasPermission) {
+          // Check if user has admin role in target organization
+          const userRoles = await rbacService.getUserRoles(authUser.id, organizationId);
+          hasPermission = userRoles.some(ur => 
+            ['owner', 'admin', 'system_admin'].includes(ur.role.key) && !ur.isExpired
+          );
+        }
+      }
+      
+      if (!hasPermission) {
+        logger.warn('User lacks permission to view organization activity', {
+          userId: authUser.id,
+          organizationId,
+          userOrgId: tenantContext.tenantId
+        });
+        return res.error('FORBIDDEN', 'Insufficient permissions to view organization activity', 403);
+      }
+
+      // Query organization activity logs
+      const activitiesQuery = `
+        SELECT 
+          al.id,
+          al.action,
+          al.table_name as entity_type,
+          al.record_id as entity_id,
+          al.user_id,
+          al.metadata,
+          al.created_at,
+          u.wallet_address,
+          CONCAT_WS(' ', u.first_name, u.last_name) as display_name
+        FROM audit_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+        WHERE al.organization_id = $1
+        ORDER BY al.created_at DESC
+        LIMIT ${parseInt(limit as string, 10)}
+        OFFSET ${parseInt(offset as string, 10)}
+      `;
+
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM audit_logs al
+        WHERE al.organization_id = $1
+      `;
+
+      const [activitiesResult, countResult] = await Promise.all([
+        AppDataSource.query(activitiesQuery, [organizationId]),
+        AppDataSource.query(countQuery, [organizationId])
+      ]);
+
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      // Format activities with user information
+      const activities = activitiesResult.map((activity: any) => ({
+        id: activity.id,
+        action: activity.action,
+        entity_type: activity.entity_type,
+        entity_id: activity.entity_id,
+        user_id: activity.user_id,
+        user: activity.wallet_address ? {
+          wallet_address: activity.wallet_address,
+          display_name: activity.display_name || 'Unknown User'
+        } : null,
+        metadata: activity.metadata || {},
+        created_at: activity.created_at
+      }));
+
+      logger.info('Organization activity retrieved successfully', {
+        organizationId,
+        activityCount: activities.length,
+        total,
+        requestedBy: authUser.id
+      });
+
+      res.success({
+        activities,
+        pagination: {
+          total,
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10)
+        }
+      });
+
+    } catch (error: any) {
+      logger.error('Failed to retrieve organization activity', {
+        error: error.message,
+        organizationId,
+        userId: req.context?.userId
+      });
+      
+      return res.error('INTERNAL_ERROR', 'Failed to retrieve organization activity', 500);
+    }
+  })
+);
+
 export const organizationRoutes = router;

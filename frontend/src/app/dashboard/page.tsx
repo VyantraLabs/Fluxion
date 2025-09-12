@@ -1,5 +1,5 @@
-import { MultiOrgDashboard } from '@/components/dashboard/MultiOrgDashboard';
+import { OrganizationSelectionDashboard } from '@/components/dashboard/OrganizationSelectionDashboard';
 
 export default function DashboardPage() {
-  return <MultiOrgDashboard />;
+  return <OrganizationSelectionDashboard />;
 }

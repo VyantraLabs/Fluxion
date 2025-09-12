@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Quote - {{quote_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: #f8fafc;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+        
+        .quote-container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .quote-header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 2.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .quote-header::before {
+            content: '⚡';
+            position: absolute;
+            top: 1rem;
+            right: 1.5rem;
+            font-size: 3rem;
+            opacity: 0.6;
+        }
+        
+        .header-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .quote-title {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        
+        .quote-subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 1.5rem;
+        }
+        
+        .quote-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        
+        .meta-item {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .meta-label {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-bottom: 0.25rem;
+        }
+        
+        .meta-value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .quote-content {
+            padding: 2rem;
+        }
+        
+        .service-section {
+            background: #f0fdf4;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 2px solid #10b981;
+        }
+        
+        .service-title {
+            color: #10b981;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .service-description {
+            color: #166534;
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+        }
+        
+        .service-features {
+            display: grid;
+            gap: 0.75rem;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #166534;
+            font-weight: 500;
+        }
+        
+        .feature-item::before {
+            content: '✓';
+            background: #10b981;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        
+        .pricing-section {
+            background: #fafafa;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .pricing-title {
+            color: #1f2937;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .price-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .price-item:last-child {
+            border-bottom: none;
+            border-top: 3px solid #10b981;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #10b981;
+        }
+        
+        .price-label {
+            color: #6b7280;
+        }
+        
+        .price-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .timeline-section {
+            background: #eff6ff;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 2px solid #3b82f6;
+        }
+        
+        .timeline-title {
+            color: #1d4ed8;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .timeline-steps {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .timeline-step {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #1e40af;
+        }
+        
+        .step-number {
+            background: #3b82f6;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        
+        .step-duration {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .terms-section {
+            background: #fef3c7;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 2px solid #f59e0b;
+        }
+        
+        .terms-title {
+            color: #d97706;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .terms-list {
+            list-style: none;
+            display: grid;
+            gap: 0.75rem;
+        }
+        
+        .terms-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            color: #92400e;
+        }
+        
+        .terms-list li::before {
+            content: '•';
+            color: #d97706;
+            font-weight: bold;
+            margin-top: 0.1rem;
+        }
+        
+        .call-to-action {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .call-to-action::before {
+            content: '';
+            position: absolute;
+            top: -50px;
+            right: -50px;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+        }
+        
+        .cta-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .cta-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .cta-message {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-bottom: 1.5rem;
+        }
+        
+        .cta-button {
+            background: white;
+            color: #10b981;
+            padding: 0.75rem 2rem;
+            border-radius: 50px;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .contact-section {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .contact-title {
+            color: #1f2937;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .contact-item {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        
+        .contact-item strong {
+            color: #1f2937;
+        }
+        
+        .validity-notice {
+            text-align: center;
+            color: #ef4444;
+            font-weight: 600;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .quote-container {
+                box-shadow: none;
+                border: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem 0.5rem;
+            }
+            
+            .quote-container {
+                border-radius: 12px;
+            }
+            
+            .quote-meta {
+                grid-template-columns: 1fr;
+            }
+            
+            .contact-info {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="quote-container">
+        <!-- Header -->
+        <div class="quote-header">
+            <div class="header-content">
+                <h1 class="quote-title">Quick Service Quote</h1>
+                <div class="quote-subtitle">Fast & Professional {{service_type}} Services</div>
+                
+                <div class="quote-meta">
+                    <div class="meta-item">
+                        <div class="meta-label">Quote Number</div>
+                        <div class="meta-value">{{quote_number}}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Service Type</div>
+                        <div class="meta-value">{{service_type}}</div>
+                    </div>
+                    <div class="meta-item">
+                        <div class="meta-label">Completion Time</div>
+                        <div class="meta-value">{{estimated_completion}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="quote-content">
+            <!-- Service Description -->
+            <div class="service-section">
+                <h2 class="service-title">🎯 What You Get</h2>
+                <div class="service-description">
+                    {{service_description}}
+                </div>
+                
+                <div class="service-features">
+                    {{#each features}}
+                    <div class="feature-item">{{this}}</div>
+                    {{/each}}
+                </div>
+            </div>
+
+            <!-- Pricing -->
+            <div class="pricing-section">
+                <h2 class="pricing-title">💰 Investment</h2>
+                
+                <div class="price-item">
+                    <span class="price-label">Base Service Fee:</span>
+                    <span class="price-value">${{base_price}}</span>
+                </div>
+                
+                {{#if additional_features}}
+                {{#each additional_features}}
+                <div class="price-item">
+                    <span class="price-label">{{name}}:</span>
+                    <span class="price-value">${{price}}</span>
+                </div>
+                {{/each}}
+                {{/if}}
+                
+                {{#if discount_amount}}
+                <div class="price-item">
+                    <span class="price-label">Early Bird Discount:</span>
+                    <span class="price-value">-${{discount_amount}}</span>
+                </div>
+                {{/if}}
+                
+                <div class="price-item">
+                    <span class="price-label">Total Quote:</span>
+                    <span class="price-value">${{total_quote}}</span>
+                </div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="timeline-section">
+                <h2 class="timeline-title">⏱️ Quick Timeline</h2>
+                
+                <div class="timeline-steps">
+                    <div class="timeline-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <div class="step-title">Project Kickoff</div>
+                            <div class="step-duration">Day 1 - Initial consultation & requirements</div>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <div class="step-title">Development & Execution</div>
+                            <div class="step-duration">{{development_duration}} - Core work & implementation</div>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <div class="step-title">Review & Delivery</div>
+                            <div class="step-duration">{{review_duration}} - Final review & handover</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terms -->
+            <div class="terms-section">
+                <h2 class="terms-title">📋 Quick Terms</h2>
+                
+                <ul class="terms-list">
+                    <li>Quote valid for {{quote_validity_days}} days</li>
+                    <li>{{deposit_percentage}}% deposit required to start work</li>
+                    <li>Balance due upon completion</li>
+                    <li>{{revision_rounds}} rounds of revisions included</li>
+                    <li>Rush delivery available for additional {{rush_fee}}%</li>
+                    <li>All work guaranteed for {{guarantee_period}}</li>
+                </ul>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="call-to-action">
+                <div class="cta-content">
+                    <h2 class="cta-title">Ready to Get Started?</h2>
+                    <div class="cta-message">Let's bring your project to life with our fast, professional service!</div>
+                    <a href="mailto:{{contact_email}}?subject=Accept Quote {{quote_number}}" class="cta-button">
+                        Accept This Quote
+                    </a>
+                </div>
+            </div>
+
+            <!-- Contact Information -->
+            <div class="contact-section">
+                <h3 class="contact-title">Questions? Let's Talk!</h3>
+                
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <strong>Email:</strong> {{contact_email}}
+                    </div>
+                    <div class="contact-item">
+                        <strong>Phone:</strong> {{contact_phone}}
+                    </div>
+                    <div class="contact-item">
+                        <strong>Website:</strong> {{company_website}}
+                    </div>
+                </div>
+                
+                <div class="validity-notice">
+                    ⚠️ This quote expires on {{quote_expiry_date}}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

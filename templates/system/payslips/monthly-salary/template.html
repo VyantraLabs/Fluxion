@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salary Slip - {{pay_period}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.5;
+            color: #374151;
+            background-color: #f3f4f6;
+        }
+        
+        .payslip-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #1f2937 100%);
+            color: white;
+            padding: 2rem;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .company-info h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .company-info .subtitle {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+        
+        .payslip-title {
+            text-align: right;
+        }
+        
+        .payslip-title h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .pay-period {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .employee-info {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        .info-section h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.9rem;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 500;
+            color: #6b7280;
+        }
+        
+        .info-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .earnings-deductions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .salary-section {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            background: linear-gradient(135deg, {{branding.primaryColor}} 0%, #3b82f6 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .earnings-header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        
+        .deductions-header {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+        
+        .section-content {
+            padding: 0;
+        }
+        
+        .salary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .salary-item:last-child {
+            border-bottom: none;
+        }
+        
+        .salary-item:nth-child(even) {
+            background-color: #f9fafb;
+        }
+        
+        .item-name {
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .item-amount {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .summary-section {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border: 2px solid {{branding.primaryColor}}30;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .summary-header {
+            background: {{branding.primaryColor}};
+            color: white;
+            padding: 1rem 1.5rem;
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+        
+        .summary-content {
+            padding: 1.5rem;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #cbd5e0;
+        }
+        
+        .summary-row:last-child {
+            border-bottom: none;
+            border-top: 3px solid {{branding.primaryColor}};
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: {{branding.primaryColor}};
+        }
+        
+        .crypto-payment {
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .crypto-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .crypto-header h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .crypto-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .crypto-detail {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .crypto-detail-label {
+            font-size: 0.8rem;
+            color: #d1d5db;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .crypto-detail-value {
+            font-weight: 600;
+            color: white;
+        }
+        
+        .wallet-address {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            word-break: break-all;
+            text-align: center;
+        }
+        
+        .footer {
+            background: #f9fafb;
+            padding: 2rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        .footer-section h4 {
+            color: {{branding.primaryColor}};
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        .footer-section p {
+            margin-bottom: 0.5rem;
+            color: #4b5563;
+        }
+        
+        @media print {
+            body { background-color: white; }
+            .payslip-container { box-shadow: none; margin: 0; }
+        }
+        
+        @media (max-width: 768px) {
+            .payslip-container { margin: 1rem; }
+            .header-content { flex-direction: column; gap: 1rem; text-align: left; }
+            .payslip-title { text-align: left; }
+            .info-grid { grid-template-columns: 1fr; }
+            .earnings-deductions { grid-template-columns: 1fr; }
+            .crypto-details { grid-template-columns: 1fr; }
+            .footer-content { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="payslip-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="company-info">
+                    <h1>{{branding.companyName}}</h1>
+                    <div class="subtitle">Employee Compensation Statement</div>
+                </div>
+                <div class="payslip-title">
+                    <h2>SALARY SLIP</h2>
+                    <div class="pay-period">{{pay_period}}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Employee Information -->
+            <div class="employee-info">
+                <div class="info-grid">
+                    <div class="info-section">
+                        <h4>Employee Details</h4>
+                        <div class="info-item">
+                            <span class="info-label">Name:</span>
+                            <span class="info-value">{{employee_name}}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Employee ID:</span>
+                            <span class="info-value">{{employee_id}}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Department:</span>
+                            <span class="info-value">{{department}}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Designation:</span>
+                            <span class="info-value">{{designation}}</span>
+                        </div>
+                    </div>
+                    <div class="info-section">
+                        <h4>Pay Details</h4>
+                        <div class="info-item">
+                            <span class="info-label">Pay Period:</span>
+                            <span class="info-value">{{pay_period}}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Pay Date:</span>
+                            <span class="info-value">{{pay_date}}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Working Days:</span>
+                            <span class="info-value">{{working_days}}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Days Worked:</span>
+                            <span class="info-value">{{days_worked}}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Earnings and Deductions -->
+            <div class="earnings-deductions">
+                <div class="salary-section">
+                    <div class="section-header earnings-header">💰 Earnings</div>
+                    <div class="section-content">
+                        {{#each earnings}}
+                        <div class="salary-item">
+                            <span class="item-name">{{name}}</span>
+                            <span class="item-amount">${{amount}}</span>
+                        </div>
+                        {{/each}}
+                    </div>
+                </div>
+                
+                <div class="salary-section">
+                    <div class="section-header deductions-header">💸 Deductions</div>
+                    <div class="section-content">
+                        {{#each deductions}}
+                        <div class="salary-item">
+                            <span class="item-name">{{name}}</span>
+                            <span class="item-amount">${{amount}}</span>
+                        </div>
+                        {{/each}}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="summary-section">
+                <div class="summary-header">📊 Pay Summary</div>
+                <div class="summary-content">
+                    <div class="summary-row">
+                        <span>Gross Salary:</span>
+                        <span>${{gross_salary}}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Total Deductions:</span>
+                        <span>${{total_deductions}}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Net Pay:</span>
+                        <span>${{net_pay}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crypto Payment -->
+            <div class="crypto-payment">
+                <div class="crypto-header">
+                    <h3>💎 Cryptocurrency Payment</h3>
+                    <p>Your salary will be paid in cryptocurrency</p>
+                </div>
+                
+                <div class="crypto-details">
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Network</div>
+                        <div class="crypto-detail-value">{{network_name}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Token</div>
+                        <div class="crypto-detail-value">{{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">Amount</div>
+                        <div class="crypto-detail-value">{{crypto_amount}} {{token_symbol}}</div>
+                    </div>
+                    <div class="crypto-detail">
+                        <div class="crypto-detail-label">USD Value</div>
+                        <div class="crypto-detail-value">${{net_pay}}</div>
+                    </div>
+                </div>
+
+                <div class="wallet-address">
+                    <div style="margin-bottom: 0.5rem; font-size: 0.8rem; color: #d1d5db;">EMPLOYEE WALLET ADDRESS</div>
+                    {{recipient_address}}
+                </div>
+
+                {{#if qr_code_url}}
+                <div style="text-align: center; margin-top: 1rem;">
+                    <img src="{{qr_code_url}}" alt="Payment QR Code" style="max-width: 200px; height: auto;">
+                    <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #d1d5db;">Payment Reference QR Code</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>📝 Important Notes</h4>
+                    <p>• This is a computer-generated payslip and does not require a signature</p>
+                    <p>• Please verify all details and report discrepancies immediately</p>
+                    <p>• Tax deductions are as per applicable tax laws</p>
+                    <p>• Keep this payslip for your income tax filing</p>
+                    <p>• Crypto payments are subject to market exchange rates</p>
+                </div>
+                <div class="footer-section">
+                    <h4>📞 HR Contact</h4>
+                    <p><strong>HR Department:</strong> {{hr_email}}</p>
+                    <p><strong>Payroll Queries:</strong> {{payroll_email}}</p>
+                    <p><strong>Phone:</strong> {{branding.companyPhone}}</p>
+                    <p><strong>Office Hours:</strong> Mon-Fri 9AM-6PM</p>
+                    
+                    <div style="margin-top: 1rem; padding: 1rem; background: white; border-radius: 4px;">
+                        <p><strong>Employee Portal:</strong></p>
+                        <p style="color: {{branding.primaryColor}}; font-weight: 600;">{{employee_portal_url}}</p>
+                    </div>
+                </div>
+            </div>
+            
+            {{#if footer_note}}
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; text-align: center;">
+                <p style="color: #6b7280; font-style: italic;">{{footer_note}}</p>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freelance Contract - {{contract_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Times New Roman', serif;
+            line-height: 1.8;
+            color: #1a1a1a;
+            background: white;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .contract-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 3px solid #7c3aed;
+        }
+        
+        .contract-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #7c3aed;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .contract-subtitle {
+            font-size: 1.2rem;
+            color: #4b5563;
+            margin-bottom: 0.5rem;
+        }
+        
+        .contract-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+        
+        .parties-section {
+            margin-bottom: 2rem;
+            background: #faf5ff;
+            padding: 2rem;
+            border-radius: 8px;
+            border: 2px solid #a855f7;
+        }
+        
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #7c3aed;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .party-info {
+            margin-bottom: 1.5rem;
+        }
+        
+        .party-title {
+            font-weight: bold;
+            color: #6b21a8;
+            margin-bottom: 0.5rem;
+            text-decoration: underline;
+            font-size: 1.1rem;
+        }
+        
+        .contract-content {
+            margin-bottom: 2rem;
+        }
+        
+        .article {
+            margin-bottom: 2.5rem;
+            padding: 1.5rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            border-left: 4px solid #7c3aed;
+        }
+        
+        .article-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #7c3aed;
+            margin-bottom: 1rem;
+        }
+        
+        .article-content {
+            text-align: justify;
+            margin-bottom: 1rem;
+        }
+        
+        .subsection {
+            margin: 1rem 0;
+            padding-left: 1rem;
+        }
+        
+        .subsection-title {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #6b21a8;
+        }
+        
+        .highlight-box {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        
+        .highlight-title {
+            font-weight: bold;
+            color: #d97706;
+            margin-bottom: 0.5rem;
+        }
+        
+        .payment-schedule {
+            background: #ecfdf5;
+            border: 2px solid #10b981;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        
+        .payment-schedule-title {
+            font-weight: bold;
+            color: #059669;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+        
+        .deliverables-list {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .deliverables-list ul {
+            margin-left: 1.5rem;
+        }
+        
+        .deliverables-list li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .signature-section {
+            margin-top: 4rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+        }
+        
+        .signature-block {
+            text-align: center;
+            padding: 2rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+        }
+        
+        .signature-line {
+            border-bottom: 3px solid #1a1a1a;
+            width: 100%;
+            height: 3rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .signature-label {
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #7c3aed;
+            font-size: 1.1rem;
+        }
+        
+        .signature-details {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #4b5563;
+        }
+        
+        .date-line {
+            border-bottom: 2px solid #1a1a1a;
+            width: 150px;
+            height: 2rem;
+            margin: 1rem auto;
+        }
+        
+        .legal-footer {
+            margin-top: 4rem;
+            padding: 2rem;
+            background: #fee2e2;
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #991b1b;
+        }
+        
+        .legal-footer-title {
+            font-weight: bold;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+        
+        @media print {
+            body {
+                margin: 0;
+                padding: 1rem;
+            }
+            
+            .signature-section {
+                page-break-inside: avoid;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .contract-meta {
+                grid-template-columns: 1fr;
+            }
+            
+            .signature-section {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="contract-header">
+        <h1 class="contract-title">Freelance Contract</h1>
+        <div class="contract-subtitle">Independent Contractor Agreement</div>
+        
+        <div class="contract-meta">
+            <div><strong>Contract No:</strong> {{contract_number}}</div>
+            <div><strong>Effective Date:</strong> {{effective_date}}</div>
+            <div><strong>Project:</strong> {{project_name}}</div>
+            <div><strong>Duration:</strong> {{contract_duration}}</div>
+        </div>
+    </div>
+
+    <div class="parties-section">
+        <h2 class="section-title">Contracting Parties</h2>
+        
+        <div class="party-info">
+            <div class="party-title">Freelancer (Independent Contractor):</div>
+            <p><strong>{{freelancer_name}}</strong></p>
+            <p>{{freelancer_address}}</p>
+            <p>Email: {{freelancer_email}} | Phone: {{freelancer_phone}}</p>
+            {{#if freelancer_tax_id}}
+            <p>Tax ID: {{freelancer_tax_id}}</p>
+            {{/if}}
+        </div>
+        
+        <div class="party-info">
+            <div class="party-title">Client (Hiring Entity):</div>
+            <p><strong>{{client_company}}</strong></p>
+            <p>{{client_address}}</p>
+            <p>Email: {{client_email}} | Phone: {{client_phone}}</p>
+            <p>Contact Person: {{client_contact_person}}</p>
+        </div>
+    </div>
+
+    <div class="contract-content">
+        <div class="article">
+            <h3 class="article-title">1. Work Description & Scope</h3>
+            <div class="article-content">
+                The Freelancer agrees to perform the following work as an independent contractor:
+            </div>
+            
+            <div class="highlight-box">
+                <div class="highlight-title">Project Description:</div>
+                <p>{{work_description}}</p>
+            </div>
+            
+            <div class="deliverables-list">
+                <div class="subsection-title">Specific Deliverables:</div>
+                <ul>
+                    {{#each deliverables}}
+                    <li>{{this}}</li>
+                    {{/each}}
+                </ul>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">2. Compensation & Payment Terms</h3>
+            
+            <div class="payment-schedule">
+                <div class="payment-schedule-title">Payment Structure</div>
+                <p><strong>Total Contract Value:</strong> ${{total_contract_value}}</p>
+                <p><strong>Payment Method:</strong> {{payment_method}}</p>
+                <p><strong>Payment Schedule:</strong> {{payment_schedule}}</p>
+                <p><strong>Invoice Terms:</strong> Net {{payment_terms_days}} days</p>
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">2.1 Expenses:</div>
+                <p>{{expense_policy}}</p>
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">2.2 Late Payment:</div>
+                <p>Invoices not paid within the specified terms will incur a late fee of {{late_fee_percentage}}% per month.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">3. Timeline & Milestones</h3>
+            <div class="article-content">
+                Work shall commence on {{project_start_date}} and be completed by {{project_end_date}}.
+            </div>
+            
+            {{#if milestones}}
+            <div class="deliverables-list">
+                <div class="subsection-title">Project Milestones:</div>
+                <ul>
+                    {{#each milestones}}
+                    <li><strong>{{date}}:</strong> {{description}}</li>
+                    {{/each}}
+                </ul>
+            </div>
+            {{/if}}
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">4. Independent Contractor Relationship</h3>
+            <div class="article-content">
+                The Freelancer is engaged as an independent contractor and not as an employee. This means:
+            </div>
+            
+            <div class="subsection">
+                <ul style="margin-left: 2rem;">
+                    <li>Freelancer is responsible for their own taxes and insurance</li>
+                    <li>No employee benefits are provided by the Client</li>
+                    <li>Freelancer controls how and when work is performed</li>
+                    <li>Freelancer may work for other clients during this engagement</li>
+                    <li>Client will issue a 1099 form (if applicable) for tax purposes</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">5. Intellectual Property Rights</h3>
+            <div class="article-content">
+                {{intellectual_property_clause}}
+            </div>
+            
+            <div class="highlight-box">
+                <div class="highlight-title">Important Note:</div>
+                <p>All work created specifically for this project becomes the property of the Client upon full payment, unless otherwise specified.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">6. Confidentiality</h3>
+            <div class="article-content">
+                The Freelancer agrees to maintain strict confidentiality regarding all proprietary information, trade secrets, and confidential data disclosed during the course of this engagement.
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">6.1 Non-Disclosure:</div>
+                <p>This confidentiality obligation survives the termination of this contract and continues indefinitely.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">7. Revisions & Changes</h3>
+            <div class="article-content">
+                {{revision_policy}}
+            </div>
+            
+            <div class="subsection">
+                <div class="subsection-title">7.1 Scope Changes:</div>
+                <p>Any changes to the project scope must be agreed upon in writing and may result in additional compensation.</p>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">8. Termination</h3>
+            <div class="article-content">
+                Either party may terminate this contract with {{termination_notice_days}} days written notice. Upon termination:
+            </div>
+            
+            <div class="subsection">
+                <ul style="margin-left: 2rem;">
+                    <li>Freelancer will be paid for all completed work</li>
+                    <li>All project materials must be returned to Client</li>
+                    <li>Confidentiality obligations remain in effect</li>
+                    <li>Both parties released from future obligations</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">9. Limitation of Liability</h3>
+            <div class="article-content">
+                The Freelancer's total liability under this contract shall not exceed the total amount paid by the Client. Neither party shall be liable for indirect, incidental, or consequential damages.
+            </div>
+        </div>
+
+        <div class="article">
+            <h3 class="article-title">10. Governing Law & Dispute Resolution</h3>
+            <div class="article-content">
+                This contract is governed by the laws of {{governing_jurisdiction}}. Any disputes will be resolved through {{dispute_resolution_method}}.
+            </div>
+        </div>
+    </div>
+
+    <div class="signature-section">
+        <div class="signature-block">
+            <div class="signature-line"></div>
+            <div class="signature-label">Freelancer Signature</div>
+            <div class="signature-details">
+                <p><strong>{{freelancer_name}}</strong></p>
+                <p>Independent Contractor</p>
+                <div class="date-line"></div>
+                <p>Date</p>
+            </div>
+        </div>
+        
+        <div class="signature-block">
+            <div class="signature-line"></div>
+            <div class="signature-label">Client Signature</div>
+            <div class="signature-details">
+                <p><strong>{{client_contact_person}}</strong></p>
+                <p>{{client_company}}</p>
+                <div class="date-line"></div>
+                <p>Date</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="legal-footer">
+        <div class="legal-footer-title">Important Legal Notice</div>
+        <p>This is a legally binding contract between independent parties. Both the Freelancer and Client should review all terms carefully and consult with legal counsel if needed before signing. By signing this agreement, both parties acknowledge that they understand and agree to be bound by all terms and conditions outlined herein.</p>
+        
+        <p style="margin-top: 1rem;"><strong>Contract Generated:</strong> {{contract_generated_date}} | <strong>Jurisdiction:</strong> {{governing_jurisdiction}}</p>
+    </div>
+</body>
+</html>

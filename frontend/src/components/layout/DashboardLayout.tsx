@@ -292,8 +292,24 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           </button>
           
           <div className="flex flex-1 justify-between px-4">
-            <div className="flex flex-1">
-              {/* Search could go here */}
+            <div className="flex flex-1 items-center">
+              {/* Organization Context Indicator */}
+              {orgState.activeOrganization ? (
+                <div className="flex items-center px-3 py-1.5 bg-primary-50 rounded-md border border-primary-200">
+                  <Building2 className="w-4 h-4 text-primary-600 mr-2" />
+                  <span className="text-sm font-medium text-primary-900">
+                    {orgState.activeOrganization.name}
+                  </span>
+                  <span className="ml-2 text-xs text-primary-600">Organization</span>
+                </div>
+              ) : (
+                <div className="flex items-center px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
+                  <Home className="w-4 h-4 text-gray-600 mr-2" />
+                  <span className="text-sm font-medium text-gray-900">
+                    Global Dashboard
+                  </span>
+                </div>
+              )}
             </div>
             <div className="ml-4 flex items-center space-x-4 md:ml-6">
               {/* Desktop Organization Switcher */}

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Receipt - {{receipt_number}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: #f8fafc;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+        
+        .receipt-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .receipt-header {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            position: relative;
+        }
+        
+        .receipt-header::before {
+            content: '✅';
+            position: absolute;
+            top: 1rem;
+            left: 1.5rem;
+            font-size: 2rem;
+            opacity: 0.7;
+        }
+        
+        .receipt-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .receipt-subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .receipt-number-section {
+            background: #ecfdf5;
+            padding: 1.5rem;
+            text-align: center;
+            border-bottom: 3px solid #059669;
+        }
+        
+        .receipt-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #059669;
+            margin-bottom: 0.5rem;
+        }
+        
+        .payment-date {
+            color: #6b7280;
+            font-size: 1rem;
+        }
+        
+        .receipt-content {
+            padding: 2rem;
+        }
+        
+        .payment-summary {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .payment-summary h3 {
+            color: #059669;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .summary-row:last-child {
+            border-bottom: none;
+            border-top: 2px solid #059669;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #059669;
+        }
+        
+        .summary-label {
+            color: #6b7280;
+        }
+        
+        .summary-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .service-details {
+            margin-bottom: 2rem;
+        }
+        
+        .service-details h3 {
+            color: #1f2937;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .service-item {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid #059669;
+        }
+        
+        .service-name {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+        
+        .service-description {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        
+        .payment-method {
+            background: #fef3c7;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 2px solid #f59e0b;
+        }
+        
+        .payment-method h3 {
+            color: #d97706;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .payment-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        
+        .payment-detail {
+            text-align: center;
+        }
+        
+        .payment-detail-label {
+            font-size: 0.8rem;
+            color: #92400e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.25rem;
+        }
+        
+        .payment-detail-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .transaction-hash {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            word-break: break-all;
+            background: #f3f4f6;
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-top: 0.25rem;
+        }
+        
+        .customer-info {
+            background: #eff6ff;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 2px solid #3b82f6;
+        }
+        
+        .customer-info h3 {
+            color: #1d4ed8;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .customer-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .customer-detail p {
+            margin-bottom: 0.25rem;
+            color: #4b5563;
+        }
+        
+        .customer-detail .highlight {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .receipt-footer {
+            background: #f9fafb;
+            padding: 2rem;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .footer-message {
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        
+        .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        
+        .contact-item {
+            color: #4b5563;
+            font-size: 0.9rem;
+        }
+        
+        .contact-item strong {
+            color: #1f2937;
+        }
+        
+        .verification-badge {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .receipt-container {
+                box-shadow: none;
+                border: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem 0.5rem;
+            }
+            
+            .receipt-container {
+                border-radius: 12px;
+            }
+            
+            .payment-info {
+                grid-template-columns: 1fr;
+            }
+            
+            .customer-details {
+                grid-template-columns: 1fr;
+            }
+            
+            .contact-info {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-container">
+        <!-- Header -->
+        <div class="receipt-header">
+            <h1>Payment Received</h1>
+            <div class="receipt-subtitle">Thank you for your payment</div>
+        </div>
+
+        <!-- Receipt Number Section -->
+        <div class="receipt-number-section">
+            <div class="receipt-number">Receipt #{{receipt_number}}</div>
+            <div class="payment-date">Payment Date: {{payment_date}}</div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="receipt-content">
+            <!-- Payment Summary -->
+            <div class="payment-summary">
+                <h3>💰 Payment Summary</h3>
+                <div class="summary-row">
+                    <span class="summary-label">Service Amount:</span>
+                    <span class="summary-value">${{service_amount}}</span>
+                </div>
+                {{#if discount_amount}}
+                <div class="summary-row">
+                    <span class="summary-label">Discount Applied:</span>
+                    <span class="summary-value">-${{discount_amount}}</span>
+                </div>
+                {{/if}}
+                {{#if tax_amount}}
+                <div class="summary-row">
+                    <span class="summary-label">Tax ({{tax_rate}}%):</span>
+                    <span class="summary-value">${{tax_amount}}</span>
+                </div>
+                {{/if}}
+                <div class="summary-row">
+                    <span class="summary-label">Total Paid:</span>
+                    <span class="summary-value">${{total_amount}}</span>
+                </div>
+            </div>
+
+            <!-- Service Details -->
+            <div class="service-details">
+                <h3>📋 Services Paid For</h3>
+                {{#if service_period}}
+                <div class="service-item">
+                    <div class="service-name">Service Period</div>
+                    <div class="service-description">{{service_period}}</div>
+                </div>
+                {{/if}}
+                {{#each services}}
+                <div class="service-item">
+                    <div class="service-name">{{name}}</div>
+                    <div class="service-description">{{description}}</div>
+                </div>
+                {{/each}}
+            </div>
+
+            <!-- Payment Method -->
+            <div class="payment-method">
+                <h3>💳 Payment Method</h3>
+                <div class="payment-info">
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Method</div>
+                        <div class="payment-detail-value">{{payment_method}}</div>
+                    </div>
+                    {{#if network_name}}
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Network</div>
+                        <div class="payment-detail-value">{{network_name}}</div>
+                    </div>
+                    {{/if}}
+                    {{#if token_symbol}}
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Token</div>
+                        <div class="payment-detail-value">{{token_symbol}}</div>
+                    </div>
+                    {{/if}}
+                    <div class="payment-detail">
+                        <div class="payment-detail-label">Status</div>
+                        <div class="payment-detail-value" style="color: #059669;">Confirmed</div>
+                    </div>
+                </div>
+                {{#if transaction_hash}}
+                <div style="margin-top: 1rem;">
+                    <div class="payment-detail-label" style="text-align: left;">Transaction ID:</div>
+                    <div class="transaction-hash">{{transaction_hash}}</div>
+                </div>
+                {{/if}}
+            </div>
+
+            <!-- Customer Information -->
+            <div class="customer-info">
+                <h3>👤 Customer Information</h3>
+                <div class="customer-details">
+                    <div class="customer-detail">
+                        <p class="highlight">{{client_name}}</p>
+                        <p>{{client_email}}</p>
+                        {{#if client_phone}}
+                        <p>{{client_phone}}</p>
+                        {{/if}}
+                    </div>
+                    {{#if client_company}}
+                    <div class="customer-detail">
+                        <p><strong>Company:</strong> {{client_company}}</p>
+                        {{#if client_address}}
+                        <p>{{client_address}}</p>
+                        {{/if}}
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="receipt-footer">
+            <div class="footer-message">
+                This receipt confirms your payment has been successfully processed. 
+                Please keep this receipt for your records. If you have any questions 
+                about this payment, please contact our support team.
+            </div>
+            
+            <div class="verification-badge">
+                ✓ Verified Payment Receipt
+            </div>
+
+            <div class="contact-info">
+                <div class="contact-item">
+                    <strong>Email:</strong> {{company_email}}
+                </div>
+                <div class="contact-item">
+                    <strong>Phone:</strong> {{company_phone}}
+                </div>
+                <div class="contact-item">
+                    <strong>Website:</strong> {{company_website}}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

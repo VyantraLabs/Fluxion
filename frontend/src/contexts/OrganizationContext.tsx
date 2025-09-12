@@ -142,12 +142,26 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: 'SET_ACTIVE_ORGANIZATION', payload: org });
     dispatch({ type: 'SET_GLOBAL_VIEW', payload: org === null });
     
-    // Store in localStorage for persistence
+    // Store in localStorage for persistence (but don't use for navigation)
     if (org) {
       localStorage.setItem('activeOrganizationId', org.id);
     } else {
       localStorage.removeItem('activeOrganizationId');
     }
+  }, []);
+
+  const enterOrganization = useCallback((org: Organization) => {
+    // Set the organization as active when entering its context
+    dispatch({ type: 'SET_ACTIVE_ORGANIZATION', payload: org });
+    dispatch({ type: 'SET_GLOBAL_VIEW', payload: false });
+    localStorage.setItem('activeOrganizationId', org.id);
+  }, []);
+
+  const exitOrganization = useCallback(() => {
+    // Exit organization context and return to global view
+    dispatch({ type: 'SET_ACTIVE_ORGANIZATION', payload: null });
+    dispatch({ type: 'SET_GLOBAL_VIEW', payload: true });
+    localStorage.removeItem('activeOrganizationId');
   }, []);
 
   const setGlobalView = useCallback((isGlobal: boolean) => {
@@ -296,6 +310,8 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const actions: OrganizationContextActions = {
     setActiveOrganization,
+    enterOrganization,
+    exitOrganization,
     refreshOrganizations,
     getOrganizationUsers,
     inviteUser,
