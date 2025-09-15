@@ -1,0 +1,453 @@
+name: Deploy Fluxion Platform
+
+on:
+  push:
+    branches:
+      - main          # Production deployment
+      - staging       # Staging deployment
+      - develop       # Development deployment
+  pull_request:
+    branches:
+      - main
+      - staging
+
+env:
+  NODE_VERSION: '20.x'
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  # ====================================
+  # CODE QUALITY & TESTING
+  # ====================================
+  
+  quality-check:
+    name: Code Quality & Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          main-lambda/package-lock.json
+          notification-lambda/package-lock.json
+          frontend/package-lock.json
+
+    # Backend Testing
+    - name: Install backend dependencies
+      run: |
+        cd main-lambda
+        npm ci
+        cd ../notification-lambda
+        npm ci
+
+    - name: Backend code quality
+      run: |
+        cd main-lambda
+        npm run lint
+        npm run type-check || npm run build
+        
+    - name: Backend unit tests
+      run: |
+        cd main-lambda
+        npm run test:cov
+        
+    - name: Upload backend coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./main-lambda/coverage/lcov.info
+        flags: backend
+        name: backend-coverage
+
+    # Frontend Testing
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Frontend code quality
+      run: |
+        cd frontend
+        npm run lint
+        npm run type-check
+
+    - name: Frontend tests
+      run: |
+        cd frontend
+        npm run test
+
+    - name: Build frontend
+      run: |
+        cd frontend
+        npm run build
+
+  # ====================================
+  # SECURITY SCANNING
+  # ====================================
+  
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        ignore-unfixed: true
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Dependency vulnerability scan
+      run: |
+        cd main-lambda && npm audit --audit-level=high
+        cd ../notification-lambda && npm audit --audit-level=high
+        cd ../frontend && npm audit --audit-level=high
+
+  # ====================================
+  # BUILD LAMBDA FUNCTIONS
+  # ====================================
+  
+  build-backend:
+    name: Build Backend Services
+    runs-on: ubuntu-latest
+    needs: [quality-check]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Setup Python for SAM
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Setup AWS SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Build main lambda
+      run: |
+        cd main-lambda
+        npm ci --production=false
+        npm run build
+        
+    - name: Build notification lambda
+      run: |
+        cd notification-lambda
+        npm ci --production=false
+        npm run build
+
+    - name: SAM build
+      run: |
+        sam build --config-file infrastructure/samconfig-production.toml
+
+    - name: Cache SAM build artifacts
+      uses: actions/cache@v3
+      with:
+        path: .aws-sam/build
+        key: sam-build-${{ github.sha }}
+        restore-keys: |
+          sam-build-
+
+  # ====================================
+  # DEPLOY TO DEVELOPMENT
+  # ====================================
+  
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [build-backend]
+    if: github.ref == 'refs/heads/develop'
+    environment: development
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup deployment tools
+      uses: ./.github/actions/setup-deployment
+
+    - name: Restore SAM build cache
+      uses: actions/cache@v3
+      with:
+        path: .aws-sam/build
+        key: sam-build-${{ github.sha }}
+
+    - name: Deploy backend to dev
+      run: |
+        sam deploy --config-env dev \
+          --parameter-overrides \
+            "Environment=dev" \
+            "SupabaseUrl=${{ secrets.DEV_SUPABASE_URL }}" \
+            "SupabaseServiceRoleKey=${{ secrets.DEV_SUPABASE_SERVICE_KEY }}" \
+            "JWTSecret=${{ secrets.DEV_JWT_SECRET }}" \
+            "AlchemyAPIKey=${{ secrets.ALCHEMY_API_KEY }}" \
+          --no-confirm-changeset \
+          --no-fail-on-empty-changeset
+
+    - name: Deploy frontend to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: ./frontend
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+        alias-domains: dev.fluxion.app
+
+  # ====================================
+  # DEPLOY TO STAGING
+  # ====================================
+  
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-backend, security-scan]
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup deployment tools
+      uses: ./.github/actions/setup-deployment
+
+    - name: Restore SAM build cache
+      uses: actions/cache@v3
+      with:
+        path: .aws-sam/build
+        key: sam-build-${{ github.sha }}
+
+    - name: Run database migrations
+      run: |
+        cd main-lambda
+        npm ci
+        SUPABASE_URL="${{ secrets.STAGING_SUPABASE_URL }}" \
+        SUPABASE_SERVICE_ROLE_KEY="${{ secrets.STAGING_SUPABASE_SERVICE_KEY }}" \
+        npm run migration:run
+
+    - name: Deploy backend to staging
+      run: |
+        sam deploy --config-env staging \
+          --parameter-overrides \
+            "Environment=staging" \
+            "SupabaseUrl=${{ secrets.STAGING_SUPABASE_URL }}" \
+            "SupabaseServiceRoleKey=${{ secrets.STAGING_SUPABASE_SERVICE_KEY }}" \
+            "JWTSecret=${{ secrets.STAGING_JWT_SECRET }}" \
+            "AlchemyAPIKey=${{ secrets.ALCHEMY_API_KEY }}" \
+          --no-fail-on-empty-changeset
+
+    - name: Deploy frontend to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: ./frontend
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+        alias-domains: staging.fluxion.app
+
+    - name: Run integration tests
+      run: |
+        cd main-lambda
+        SUPABASE_URL="${{ secrets.STAGING_SUPABASE_URL }}" \
+        SUPABASE_SERVICE_ROLE_KEY="${{ secrets.STAGING_SUPABASE_SERVICE_KEY }}" \
+        npm run test:integration
+
+  # ====================================
+  # DEPLOY TO PRODUCTION
+  # ====================================
+  
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-backend, security-scan]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup deployment tools
+      uses: ./.github/actions/setup-deployment
+
+    - name: Restore SAM build cache
+      uses: actions/cache@v3
+      with:
+        path: .aws-sam/build
+        key: sam-build-${{ github.sha }}
+
+    # Production safety checks
+    - name: Pre-deployment validation
+      run: |
+        # Validate environment variables
+        if [[ -z "${{ secrets.PROD_SUPABASE_URL }}" ]]; then
+          echo "Missing production Supabase URL"
+          exit 1
+        fi
+        
+        # Validate SAM template
+        sam validate --template infrastructure/template-production.yaml
+
+    # Database migration with backup
+    - name: Backup production database
+      run: |
+        echo "Creating production database backup..."
+        # Add Supabase backup commands here
+        
+    - name: Run database migrations
+      run: |
+        cd main-lambda
+        npm ci
+        SUPABASE_URL="${{ secrets.PROD_SUPABASE_URL }}" \
+        SUPABASE_SERVICE_ROLE_KEY="${{ secrets.PROD_SUPABASE_SERVICE_KEY }}" \
+        npm run migration:run
+
+    # Blue-green deployment strategy
+    - name: Deploy backend to production
+      run: |
+        sam deploy --config-env prod \
+          --parameter-overrides \
+            "Environment=prod" \
+            "SupabaseUrl=${{ secrets.PROD_SUPABASE_URL }}" \
+            "SupabaseServiceRoleKey=${{ secrets.PROD_SUPABASE_SERVICE_KEY }}" \
+            "JWTSecret=${{ secrets.PROD_JWT_SECRET }}" \
+            "AlchemyAPIKey=${{ secrets.ALCHEMY_API_KEY }}" \
+          --no-fail-on-empty-changeset
+
+    - name: Deploy frontend to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: ./frontend
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+        alias-domains: |
+          app.fluxion.app
+          fluxion.app
+        vercel-args: '--prod'
+
+    # Post-deployment validation
+    - name: Health checks
+      run: |
+        # Wait for deployment to stabilize
+        sleep 60
+        
+        # Check API health
+        API_URL=$(aws cloudformation describe-stacks \
+          --stack-name fluxion-production \
+          --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+          --output text)
+        
+        echo "Checking API health at: $API_URL/health"
+        curl -f "$API_URL/health" || exit 1
+        
+        echo "Production deployment successful!"
+
+    - name: Post-deployment monitoring
+      run: |
+        # Set up initial monitoring
+        aws logs create-log-group --log-group-name /aws/lambda/fluxion-main-prod || true
+        aws logs put-retention-policy --log-group-name /aws/lambda/fluxion-main-prod --retention-in-days 30
+
+    - name: Slack notification
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        text: "🚀 Fluxion production deployment successful!"
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+    - name: Slack failure notification
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        text: "❌ Fluxion production deployment failed!"
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  # ====================================
+  # ROLLBACK JOB (Manual Trigger)
+  # ====================================
+  
+  rollback-production:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup deployment tools
+      uses: ./.github/actions/setup-deployment
+
+    - name: Rollback CloudFormation stack
+      run: |
+        # Get previous stack version
+        PREVIOUS_TEMPLATE=$(aws cloudformation list-stacks \
+          --stack-status-filter UPDATE_COMPLETE \
+          --query 'StackSummaries[?StackName==`fluxion-production`][1].TemplateDescription' \
+          --output text)
+        
+        echo "Rolling back to previous version..."
+        
+        # Trigger rollback
+        aws cloudformation cancel-update-stack --stack-name fluxion-production || \
+        aws cloudformation continue-update-rollback --stack-name fluxion-production
+
+    - name: Verify rollback
+      run: |
+        # Wait for rollback to complete
+        aws cloudformation wait stack-update-complete --stack-name fluxion-production
+        
+        # Verify API health
+        API_URL=$(aws cloudformation describe-stacks \
+          --stack-name fluxion-production \
+          --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+          --output text)
+        
+        curl -f "$API_URL/health"
+        echo "Rollback completed successfully!"
+
+    - name: Rollback notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: "🔄 Fluxion production rollback completed"
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,626 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Fluxion Production - Zero-Cost Web3 Payment Platform'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+
+  SupabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: Supabase project URL
+    Default: '{{resolve:ssm:/fluxion/supabase-url:1}}'
+
+  SupabaseAnonKey:
+    Type: String
+    NoEcho: true
+    Description: Supabase anonymous key
+    Default: '{{resolve:ssm:/fluxion/supabase-anon-key:1}}'
+
+  SupabaseServiceRoleKey:
+    Type: String
+    NoEcho: true
+    Description: Supabase service role key
+    Default: '{{resolve:ssm:/fluxion/supabase-service-key:1}}'
+
+  JWTSecret:
+    Type: String
+    NoEcho: true
+    Description: JWT secret for authentication
+    Default: '{{resolve:ssm:/fluxion/jwt-secret:1}}'
+
+  AlchemyAPIKey:
+    Type: String
+    NoEcho: true
+    Description: Alchemy API key for blockchain RPC
+    Default: '{{resolve:ssm:/fluxion/alchemy-api-key:1}}'
+
+  FromEmail:
+    Type: String
+    Default: noreply@fluxion.app
+    Description: Verified SES email address
+
+  FrontendURL:
+    Type: String
+    Default: https://app.fluxion.app
+    Description: Frontend application URL
+
+  CustomDomainName:
+    Type: String
+    Default: api.fluxion.app
+    Description: Custom API domain name
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 29
+    MemorySize: 1024
+    Tracing: Active
+    Environment:
+      Variables:
+        NODE_ENV: !If [IsProd, production, development]
+        ENVIRONMENT: !Ref Environment
+        
+        # Supabase Configuration
+        SUPABASE_URL: !Ref SupabaseUrl
+        SUPABASE_ANON_KEY: !Ref SupabaseAnonKey
+        SUPABASE_SERVICE_ROLE_KEY: !Ref SupabaseServiceRoleKey
+        
+        # Application Configuration
+        JWT_SECRET: !Ref JWTSecret
+        JWT_EXPIRES_IN: '24h'
+        
+        # DynamoDB Configuration
+        CONFIG_TABLE: !Ref ConfigTable
+        CACHE_TABLE: !Ref CacheTable
+        
+        # Blockchain Configuration
+        ALCHEMY_API_KEY: !Ref AlchemyAPIKey
+        ETHEREUM_RPC_URL: !Sub 'https://eth-mainnet.g.alchemy.com/v2/${AlchemyAPIKey}'
+        POLYGON_RPC_URL: !Sub 'https://polygon-mainnet.g.alchemy.com/v2/${AlchemyAPIKey}'
+        ARBITRUM_RPC_URL: !Sub 'https://arb-mainnet.g.alchemy.com/v2/${AlchemyAPIKey}'
+        BASE_RPC_URL: !Sub 'https://base-mainnet.g.alchemy.com/v2/${AlchemyAPIKey}'
+        
+        # Notification Configuration
+        NOTIFICATION_QUEUE_URL: !Ref NotificationQueue
+        FROM_EMAIL: !Ref FromEmail
+        FROM_NAME: Fluxion
+        FRONTEND_URL: !Ref FrontendURL
+        
+        # Performance Configuration
+        LOG_LEVEL: !If [IsProd, warn, info]
+        ENABLE_QUERY_LOGGING: !If [IsProd, false, true]
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+  IsStaging: !Equals [!Ref Environment, staging]
+  IsDev: !Equals [!Ref Environment, dev]
+  EnableCustomDomain: !Or [!Condition IsProd, !Condition IsStaging]
+
+Resources:
+  # ====================================
+  # LAMBDA FUNCTIONS
+  # ====================================
+  
+  # Main API Lambda - Primary business logic
+  MainLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'fluxion-main-${Environment}'
+      CodeUri: ../main-lambda/dist/
+      Handler: index.handler
+      MemorySize: 1024
+      Timeout: 29
+      ReservedConcurrencyLimit: !If [IsProd, 50, 10]
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrencyUnits: !If [IsProd, 5, 1]
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt MainLambdaDLQ.Arn
+      Environment:
+        Variables:
+          # Connection Pooling Configuration
+          DB_MAX_CONNECTIONS: !If [IsProd, 10, 5]
+          DB_MIN_CONNECTIONS: 2
+          DB_IDLE_TIMEOUT: 30000
+          DB_CONNECTION_TIMEOUT: 5000
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FluxionApi
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CacheTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt NotificationQueue.QueueName
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:GetParametersByPath
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/fluxion/*'
+            - Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+              Resource: '*'
+
+  # Notification Lambda - Email and webhook processing
+  NotificationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'fluxion-notification-${Environment}'
+      CodeUri: ../notification-lambda/dist/
+      Handler: index.handler
+      MemorySize: 512
+      Timeout: 60
+      ReservedConcurrencyLimit: !If [IsProd, 25, 5]
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt NotificationDLQ.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt NotificationQueue.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 5
+            VisibilityTimeoutSeconds: 360
+      Policies:
+        - SESCrudPolicy:
+            IdentityName: !Ref FromEmail
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConfigTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/fluxion/*'
+
+  # Background Jobs Lambda - Payment verification and cleanup
+  BackgroundJobsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'fluxion-jobs-${Environment}'
+      CodeUri: ../main-lambda/dist/
+      Handler: jobs.handler
+      MemorySize: 256
+      Timeout: 300
+      ReservedConcurrencyLimit: !If [IsProd, 10, 2]
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Description: 'Payment verification and cleanup jobs'
+            Enabled: !If [IsProd, true, false]
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConfigTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CacheTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt NotificationQueue.QueueName
+
+  # ====================================
+  # API GATEWAY CONFIGURATION
+  # ====================================
+  
+  FluxionApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'fluxion-api-${Environment}'
+      StageName: !Ref Environment
+      TracingEnabled: true
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Organization-Id'"
+        AllowOrigin: !If 
+          - IsProd
+          - "'https://fluxion.app,https://app.fluxion.app'"
+          - !If
+            - IsStaging
+            - "'https://staging.fluxion.app,https://app-staging.fluxion.app'"
+            - "'*'"
+        AllowCredentials: false
+        MaxAge: "'86400'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsProd
+                - "'https://app.fluxion.app'"
+                - "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !If 
+                - IsProd
+                - "'https://app.fluxion.app'"
+                - "'*'"
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: !If [IsProd, ERROR, INFO]
+          DataTraceEnabled: !If [IsProd, false, true]
+          MetricsEnabled: true
+          ThrottlingRateLimit: !If [IsProd, 2000, 100]
+          ThrottlingBurstLimit: !If [IsProd, 5000, 200]
+          CachingEnabled: !If [IsProd, true, false]
+          CacheTtlInSeconds: !If [IsProd, 300, 0]
+          CacheKeyParameters:
+            - method.request.header.Authorization
+            - method.request.header.X-Organization-Id
+      RequestValidators:
+        BasicRequestValidator:
+          ValidateRequestBody: true
+          ValidateRequestParameters: true
+
+  # Custom Domain Configuration
+  CustomDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Condition: EnableCustomDomain
+    Properties:
+      DomainName: !Ref CustomDomainName
+      SecurityPolicy: TLS_1_2
+      EndpointConfiguration:
+        Types: [EDGE]
+      # Certificate ARN needs to be provided separately
+      # CertificateArn: !Ref SSLCertificate
+
+  CustomDomainMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Condition: EnableCustomDomain
+    Properties:
+      DomainName: !Ref CustomDomainName
+      RestApiId: !Ref FluxionApi
+      Stage: !Ref Environment
+    DependsOn:
+      - CustomDomainName
+
+  # ====================================
+  # DYNAMODB TABLES
+  # ====================================
+  
+  # Configuration Management Table
+  ConfigTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'fluxion-config-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [IsProd, true, false]
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Fluxion
+        - Key: Component
+          Value: Configuration
+
+  # High-Frequency Cache Table
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'fluxion-cache-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Fluxion
+        - Key: Component
+          Value: Cache
+
+  # ====================================
+  # SQS QUEUES
+  # ====================================
+  
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'fluxion-notifications-${Environment}'
+      VisibilityTimeoutSeconds: 360
+      MessageRetentionPeriod: 1209600
+      DelaySeconds: 0
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  NotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'fluxion-notifications-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600
+
+  MainLambdaDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'fluxion-main-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600
+
+  # ====================================
+  # CLOUDWATCH RESOURCES
+  # ====================================
+  
+  # Log Groups with appropriate retention
+  MainLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/fluxion-main-${Environment}'
+      RetentionInDays: !If [IsProd, 30, 7]
+
+  NotificationLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/fluxion-notification-${Environment}'
+      RetentionInDays: !If [IsProd, 30, 7]
+
+  BackgroundJobsLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/fluxion-jobs-${Environment}'
+      RetentionInDays: !If [IsProd, 14, 7]
+
+  # Custom Metrics Dashboard
+  FluxionDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Condition: IsProd
+    Properties:
+      DashboardName: !Sub 'Fluxion-${Environment}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${MainLambda}"],
+                  [".", "Duration", ".", "."],
+                  [".", "Errors", ".", "."],
+                  [".", "Throttles", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Main Lambda Performance"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiName", "${FluxionApi}", "Stage", "${Environment}"],
+                  [".", "4XXError", ".", ".", ".", "."],
+                  [".", "5XXError", ".", ".", ".", "."],
+                  [".", "Latency", ".", ".", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "API Gateway Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "${ConfigTable}"],
+                  [".", "ConsumedWriteCapacityUnits", ".", "."],
+                  [".", "ThrottledRequests", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "DynamoDB Performance"
+              }
+            }
+          ]
+        }
+
+  # ====================================
+  # ALARMS FOR PRODUCTION MONITORING
+  # ====================================
+  
+  # Lambda Function Alarms
+  MainLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub 'fluxion-main-errors-${Environment}'
+      AlarmDescription: 'Main Lambda function error rate'
+      MetricName: ErrorRate
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 0.05
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainLambda
+      AlarmActions:
+        - !Ref AlertTopic
+
+  MainLambdaConcurrencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub 'fluxion-main-concurrency-${Environment}'
+      AlarmDescription: 'Main Lambda approaching concurrency limit'
+      MetricName: ConcurrentExecutions
+      Namespace: AWS/Lambda
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 45
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainLambda
+
+  # API Gateway Alarms
+  ApiGatewayLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub 'fluxion-api-latency-${Environment}'
+      AlarmDescription: 'API Gateway high latency'
+      MetricName: Latency
+      Namespace: AWS/ApiGateway
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub 'fluxion-api-${Environment}'
+        - Name: Stage
+          Value: !Ref Environment
+
+  # DynamoDB Alarms
+  ConfigTableReadThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: IsProd
+    Properties:
+      AlarmName: !Sub 'fluxion-config-read-throttles-${Environment}'
+      AlarmDescription: 'Config table read throttling'
+      MetricName: ReadThrottles
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ConfigTable
+
+  # SNS Topic for Alerts
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: IsProd
+    Properties:
+      TopicName: !Sub 'fluxion-alerts-${Environment}'
+      DisplayName: 'Fluxion Production Alerts'
+
+Outputs:
+  # API Endpoints
+  ApiUrl:
+    Description: 'API Gateway endpoint URL'
+    Value: !Sub 'https://${FluxionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub 'fluxion-api-url-${Environment}'
+
+  CustomApiUrl:
+    Condition: EnableCustomDomain
+    Description: 'Custom domain API URL'
+    Value: !Sub 'https://${CustomDomainName}'
+    Export:
+      Name: !Sub 'fluxion-custom-api-url-${Environment}'
+
+  # Lambda Functions
+  MainLambdaArn:
+    Description: 'Main Lambda function ARN'
+    Value: !GetAtt MainLambda.Arn
+    Export:
+      Name: !Sub 'fluxion-main-lambda-arn-${Environment}'
+
+  NotificationLambdaArn:
+    Description: 'Notification Lambda function ARN'
+    Value: !GetAtt NotificationLambda.Arn
+    Export:
+      Name: !Sub 'fluxion-notification-lambda-arn-${Environment}'
+
+  # Database Resources
+  ConfigTableName:
+    Description: 'DynamoDB configuration table name'
+    Value: !Ref ConfigTable
+    Export:
+      Name: !Sub 'fluxion-config-table-name-${Environment}'
+
+  CacheTableName:
+    Description: 'DynamoDB cache table name'
+    Value: !Ref CacheTable
+    Export:
+      Name: !Sub 'fluxion-cache-table-name-${Environment}'
+
+  # Queue Resources
+  NotificationQueueUrl:
+    Description: 'SQS notification queue URL'
+    Value: !Ref NotificationQueue
+    Export:
+      Name: !Sub 'fluxion-notification-queue-url-${Environment}'
+
+  # Dashboard
+  DashboardUrl:
+    Condition: IsProd
+    Description: 'CloudWatch Dashboard URL'
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=Fluxion-${Environment}'
+
+  # Deployment Information
+  DeploymentInfo:
+    Description: 'Deployment summary'
+    Value: !Sub |
+      Environment: ${Environment}
+      Region: ${AWS::Region}
+      API URL: https://${FluxionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+      Dashboard: https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=Fluxion-${Environment}
+      Deployed: ${AWS::Timestamp}

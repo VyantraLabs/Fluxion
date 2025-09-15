@@ -1,0 +1,92 @@
+# SAM Configuration for Production Deployments
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "fluxion-production"
+region = "us-east-1"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "fluxion-production"
+capabilities = "CAPABILITY_IAM"
+disable_rollback = false
+on_failure = "ROLLBACK"
+
+[default.build.parameters]
+cached = true
+parallel = true
+use_container = false
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+fail_on_empty_changeset = false
+resolve_s3 = true
+s3_prefix = "fluxion-production"
+region = "us-east-1"
+image_repositories = []
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+# Development Environment
+[dev]
+[dev.global.parameters]
+stack_name = "fluxion-dev"
+region = "us-east-1"
+confirm_changeset = false
+
+[dev.deploy.parameters]
+confirm_changeset = false
+parameter_overrides = [
+    "Environment=dev",
+    "FrontendURL=http://localhost:3002",
+    "FromEmail=dev@fluxion.app",
+    "CustomDomainName=api-dev.fluxion.app"
+]
+
+# Staging Environment
+[staging]
+[staging.global.parameters]
+stack_name = "fluxion-staging"
+region = "us-east-1"
+confirm_changeset = true
+
+[staging.deploy.parameters]
+confirm_changeset = true
+parameter_overrides = [
+    "Environment=staging",
+    "FrontendURL=https://staging.fluxion.app",
+    "FromEmail=staging@fluxion.app",
+    "CustomDomainName=api-staging.fluxion.app"
+]
+
+# Production Environment
+[prod]
+[prod.global.parameters]
+stack_name = "fluxion-production"
+region = "us-east-1"
+confirm_changeset = true
+
+[prod.deploy.parameters]
+confirm_changeset = true
+parameter_overrides = [
+    "Environment=prod",
+    "FrontendURL=https://app.fluxion.app",
+    "FromEmail=noreply@fluxion.app",
+    "CustomDomainName=api.fluxion.app"
+]
+
+# Production deployment with additional safeguards
+[prod.deploy.parameters.tags]
+Environment = "production"
+Service = "fluxion"
+Owner = "platform-team"
+CostCenter = "engineering"
+Backup = "required"

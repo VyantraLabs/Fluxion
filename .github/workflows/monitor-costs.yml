@@ -1,0 +1,486 @@
+name: Monitor AWS Costs and Usage
+
+on:
+  schedule:
+    # Run daily at 9 AM UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor-costs:
+    name: Monitor AWS Costs & Free Tier Usage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Install dependencies
+      run: |
+        pip install boto3 requests
+
+    - name: Check AWS costs and usage
+      run: |
+        python3 << 'EOF'
+        import boto3
+        import json
+        import requests
+        from datetime import datetime, timedelta
+        import os
+
+        # Initialize AWS clients
+        ce = boto3.client('ce', region_name='us-east-1')
+        cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
+        lambda_client = boto3.client('lambda', region_name='us-east-1')
+
+        def get_cost_and_usage():
+            """Get current month costs"""
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = datetime.now().replace(day=1).strftime('%Y-%m-%d')
+            
+            response = ce.get_cost_and_usage(
+                TimePeriod={
+                    'Start': start_date,
+                    'End': end_date
+                },
+                Granularity='MONTHLY',
+                Metrics=['BlendedCost', 'UsageQuantity'],
+                GroupBy=[
+                    {'Type': 'DIMENSION', 'Key': 'SERVICE'},
+                ]
+            )
+            
+            costs = {}
+            total_cost = 0
+            
+            for result in response['ResultsByTime']:
+                for group in result['Groups']:
+                    service = group['Keys'][0]
+                    cost = float(group['Metrics']['BlendedCost']['Amount'])
+                    costs[service] = cost
+                    total_cost += cost
+            
+            return costs, total_cost
+
+        def get_lambda_metrics():
+            """Get Lambda function usage metrics"""
+            functions = []
+            
+            # Get Fluxion Lambda functions
+            paginator = lambda_client.get_paginator('list_functions')
+            for page in paginator.paginate():
+                for func in page['Functions']:
+                    if 'fluxion' in func['FunctionName'].lower():
+                        functions.append(func['FunctionName'])
+            
+            lambda_stats = {}
+            
+            for func_name in functions:
+                try:
+                    # Get invocation count for last 30 days
+                    response = cloudwatch.get_metric_statistics(
+                        Namespace='AWS/Lambda',
+                        MetricName='Invocations',
+                        Dimensions=[
+                            {'Name': 'FunctionName', 'Value': func_name}
+                        ],
+                        StartTime=datetime.now() - timedelta(days=30),
+                        EndTime=datetime.now(),
+                        Period=86400,  # 1 day
+                        Statistics=['Sum']
+                    )
+                    
+                    total_invocations = sum([point['Sum'] for point in response['Datapoints']])
+                    lambda_stats[func_name] = {
+                        'invocations': int(total_invocations),
+                        'daily_average': int(total_invocations / 30)
+                    }
+                except Exception as e:
+                    print(f"Error getting metrics for {func_name}: {e}")
+            
+            return lambda_stats
+
+        def check_free_tier_limits():
+            """Check free tier usage against limits"""
+            alerts = []
+            
+            # Lambda free tier: 1M requests + 400,000 GB-seconds
+            lambda_stats = get_lambda_metrics()
+            total_invocations = sum([stats['invocations'] for stats in lambda_stats.values()])
+            
+            if total_invocations > 800000:  # 80% of free tier
+                alerts.append({
+                    'service': 'AWS Lambda',
+                    'usage': f'{total_invocations:,} invocations',
+                    'limit': '1,000,000 invocations/month',
+                    'percentage': (total_invocations / 1000000) * 100,
+                    'severity': 'warning' if total_invocations < 950000 else 'critical'
+                })
+            
+            # API Gateway free tier: 1M requests
+            # DynamoDB free tier: 25GB storage + 200M requests
+            
+            return alerts
+
+        def format_slack_message(costs, total_cost, lambda_stats, alerts):
+            """Format Slack notification message"""
+            message = {
+                "text": "AWS Cost and Usage Report",
+                "blocks": [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "🏦 AWS Cost Monitor - Fluxion Platform"
+                        }
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Total Month-to-Date Cost:* ${total_cost:.2f}"
+                        }
+                    }
+                ]
+            }
+            
+            # Add service breakdown if costs > $0
+            if total_cost > 0:
+                cost_text = "\n".join([f"• {service}: ${cost:.2f}" for service, cost in costs.items() if cost > 0.01])
+                if cost_text:
+                    message["blocks"].append({
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Service Breakdown:*\n{cost_text}"
+                        }
+                    })
+            
+            # Add Lambda usage stats
+            if lambda_stats:
+                lambda_text = "\n".join([
+                    f"• {func}: {stats['invocations']:,} invocations ({stats['daily_average']}/day avg)" 
+                    for func, stats in lambda_stats.items()
+                ])
+                
+                total_lambda_invocations = sum([stats['invocations'] for stats in lambda_stats.values()])
+                free_tier_percentage = (total_lambda_invocations / 1000000) * 100
+                
+                message["blocks"].append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Lambda Usage (Last 30 days):*\n{lambda_text}\n\n*Free Tier Usage:* {free_tier_percentage:.1f}% of 1M requests/month"
+                    }
+                })
+            
+            # Add alerts if any
+            if alerts:
+                alert_text = ""
+                for alert in alerts:
+                    emoji = "⚠️" if alert['severity'] == 'warning' else "🚨"
+                    alert_text += f"{emoji} *{alert['service']}*: {alert['usage']} ({alert['percentage']:.1f}% of free tier)\n"
+                
+                message["blocks"].append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Free Tier Alerts:*\n{alert_text}"
+                    }
+                })
+            else:
+                message["blocks"].append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "✅ *All services within free tier limits*"
+                    }
+                })
+            
+            return message
+
+        # Main execution
+        try:
+            print("Fetching AWS cost and usage data...")
+            costs, total_cost = get_cost_and_usage()
+            lambda_stats = get_lambda_metrics()
+            alerts = check_free_tier_limits()
+            
+            # Print summary
+            print(f"Total cost this month: ${total_cost:.2f}")
+            print(f"Number of alerts: {len(alerts)}")
+            
+            # Send Slack notification
+            webhook_url = os.environ.get('SLACK_WEBHOOK_URL')
+            if webhook_url and '${{ secrets.SLACK_WEBHOOK }}':
+                message = format_slack_message(costs, total_cost, lambda_stats, alerts)
+                
+                response = requests.post(
+                    '${{ secrets.SLACK_WEBHOOK }}',
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(message)
+                )
+                
+                if response.status_code == 200:
+                    print("Slack notification sent successfully")
+                else:
+                    print(f"Failed to send Slack notification: {response.status_code}")
+            
+            # Set GitHub output for potential follow-up actions
+            with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+                f.write(f"total_cost={total_cost:.2f}\n")
+                f.write(f"alert_count={len(alerts)}\n")
+                f.write(f"has_critical_alerts={'true' if any(a['severity'] == 'critical' for a in alerts) else 'false'}\n")
+                
+        except Exception as e:
+            print(f"Error in cost monitoring: {e}")
+            
+            # Send error notification to Slack
+            if '${{ secrets.SLACK_WEBHOOK }}':
+                error_message = {
+                    "text": f"❌ AWS Cost Monitor failed: {str(e)}"
+                }
+                requests.post(
+                    '${{ secrets.SLACK_WEBHOOK }}',
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(error_message)
+                )
+        EOF
+
+    - name: Create cost alert issue
+      if: steps.monitor.outputs.has_critical_alerts == 'true'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: '🚨 Critical AWS Cost Alert - Fluxion Platform',
+            body: `
+            ## Critical Cost Alert
+            
+            The Fluxion platform has exceeded 95% of AWS free tier limits.
+            
+            **Total Cost This Month:** $\${{ steps.monitor.outputs.total_cost }}
+            **Number of Alerts:** ${{ steps.monitor.outputs.alert_count }}
+            
+            ### Immediate Actions Required:
+            1. Review usage patterns in AWS console
+            2. Consider optimizing Lambda function execution
+            3. Implement additional cost controls
+            4. Review DynamoDB and API Gateway usage
+            
+            ### Monitoring Dashboard:
+            - [AWS Cost Explorer](https://console.aws.amazon.com/cost-management/home#/cost-explorer)
+            - [AWS Free Tier Usage](https://console.aws.amazon.com/billing/home#/freetier)
+            
+            This issue was automatically created by the cost monitoring workflow.
+            `,
+            labels: ['critical', 'cost-alert', 'ops']
+          });
+
+  # ====================================
+  # PERFORMANCE MONITORING
+  # ====================================
+  
+  performance-check:
+    name: Performance & Health Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Check API health and performance
+      run: |
+        python3 << 'EOF'
+        import boto3
+        import requests
+        import time
+        import json
+        from datetime import datetime, timedelta
+
+        def check_api_performance():
+            """Check API response times and availability"""
+            environments = {
+                'production': 'https://api.fluxion.app',
+                'staging': 'https://api-staging.fluxion.app',
+                'development': 'https://api-dev.fluxion.app'
+            }
+            
+            results = {}
+            
+            for env, base_url in environments.items():
+                try:
+                    # Health check endpoint
+                    start_time = time.time()
+                    response = requests.get(f"{base_url}/health", timeout=10)
+                    response_time = (time.time() - start_time) * 1000
+                    
+                    results[env] = {
+                        'status': response.status_code,
+                        'response_time_ms': round(response_time, 2),
+                        'available': response.status_code == 200
+                    }
+                    
+                except Exception as e:
+                    results[env] = {
+                        'status': 'error',
+                        'response_time_ms': 0,
+                        'available': False,
+                        'error': str(e)
+                    }
+            
+            return results
+
+        def get_lambda_performance():
+            """Get Lambda performance metrics"""
+            cloudwatch = boto3.client('cloudwatch')
+            
+            # Get performance metrics for last 24 hours
+            end_time = datetime.utcnow()
+            start_time = end_time - timedelta(hours=24)
+            
+            functions = ['fluxion-main-prod', 'fluxion-notification-prod']
+            metrics = {}
+            
+            for func_name in functions:
+                try:
+                    # Duration metrics
+                    duration_response = cloudwatch.get_metric_statistics(
+                        Namespace='AWS/Lambda',
+                        MetricName='Duration',
+                        Dimensions=[{'Name': 'FunctionName', 'Value': func_name}],
+                        StartTime=start_time,
+                        EndTime=end_time,
+                        Period=3600,  # 1 hour
+                        Statistics=['Average', 'Maximum']
+                    )
+                    
+                    # Error rate
+                    error_response = cloudwatch.get_metric_statistics(
+                        Namespace='AWS/Lambda',
+                        MetricName='Errors',
+                        Dimensions=[{'Name': 'FunctionName', 'Value': func_name}],
+                        StartTime=start_time,
+                        EndTime=end_time,
+                        Period=3600,
+                        Statistics=['Sum']
+                    )
+                    
+                    # Invocation count
+                    invocation_response = cloudwatch.get_metric_statistics(
+                        Namespace='AWS/Lambda',
+                        MetricName='Invocations',
+                        Dimensions=[{'Name': 'FunctionName', 'Value': func_name}],
+                        StartTime=start_time,
+                        EndTime=end_time,
+                        Period=3600,
+                        Statistics=['Sum']
+                    )
+                    
+                    total_invocations = sum([point['Sum'] for point in invocation_response['Datapoints']])
+                    total_errors = sum([point['Sum'] for point in error_response['Datapoints']])
+                    
+                    avg_duration = 0
+                    max_duration = 0
+                    if duration_response['Datapoints']:
+                        avg_duration = sum([point['Average'] for point in duration_response['Datapoints']]) / len(duration_response['Datapoints'])
+                        max_duration = max([point['Maximum'] for point in duration_response['Datapoints']])
+                    
+                    error_rate = (total_errors / total_invocations * 100) if total_invocations > 0 else 0
+                    
+                    metrics[func_name] = {
+                        'avg_duration_ms': round(avg_duration, 2),
+                        'max_duration_ms': round(max_duration, 2),
+                        'error_rate_percent': round(error_rate, 2),
+                        'total_invocations': int(total_invocations),
+                        'total_errors': int(total_errors)
+                    }
+                    
+                except Exception as e:
+                    print(f"Error getting metrics for {func_name}: {e}")
+                    metrics[func_name] = {'error': str(e)}
+            
+            return metrics
+
+        # Execute performance checks
+        try:
+            api_results = check_api_performance()
+            lambda_metrics = get_lambda_performance()
+            
+            # Print results
+            print("API Performance Results:")
+            for env, result in api_results.items():
+                print(f"  {env}: {result}")
+            
+            print("\nLambda Performance Metrics:")
+            for func, metrics in lambda_metrics.items():
+                print(f"  {func}: {metrics}")
+            
+            # Check for performance issues
+            issues = []
+            
+            # API availability issues
+            for env, result in api_results.items():
+                if not result['available']:
+                    issues.append(f"API {env} is not responding")
+                elif result.get('response_time_ms', 0) > 5000:
+                    issues.append(f"API {env} has high response time: {result['response_time_ms']}ms")
+            
+            # Lambda performance issues
+            for func, metrics in lambda_metrics.items():
+                if metrics.get('error_rate_percent', 0) > 1:
+                    issues.append(f"{func} has high error rate: {metrics['error_rate_percent']}%")
+                if metrics.get('avg_duration_ms', 0) > 10000:
+                    issues.append(f"{func} has high average duration: {metrics['avg_duration_ms']}ms")
+            
+            if issues:
+                print(f"\n⚠️ Performance Issues Found:")
+                for issue in issues:
+                    print(f"  - {issue}")
+                
+                # Send Slack alert
+                if '${{ secrets.SLACK_WEBHOOK }}':
+                    alert_message = {
+                        "text": f"⚠️ Fluxion Performance Issues Detected",
+                        "blocks": [
+                            {
+                                "type": "header",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "⚠️ Performance Alert - Fluxion Platform"
+                                }
+                            },
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": "*Issues detected:*\n" + "\n".join([f"• {issue}" for issue in issues])
+                                }
+                            }
+                        ]
+                    }
+                    
+                    requests.post(
+                        '${{ secrets.SLACK_WEBHOOK }}',
+                        headers={'Content-Type': 'application/json'},
+                        data=json.dumps(alert_message)
+                    )
+            else:
+                print("✅ All performance metrics within acceptable ranges")
+                
+        except Exception as e:
+            print(f"Error in performance monitoring: {e}")
+        EOF

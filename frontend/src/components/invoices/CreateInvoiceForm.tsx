@@ -20,7 +20,7 @@ export function CreateInvoiceForm({
 }: CreateInvoiceFormProps) {
   // Context hooks
   const { state: authState } = useAuth();
-  const { state: web3State } = useWeb3();
+  const web3Context = useWeb3();
   const { config } = useConfig();
   const networks = useNetworks();
   const tokens = useTokens();
@@ -31,7 +31,7 @@ export function CreateInvoiceForm({
     clientEmail: '',
     amount: '',
     dueDate: '',
-    networkId: web3State.chainId ? web3State.chainId.toString() : config.defaultNetworkId.toString(),
+    networkId: web3Context?.chainId ? web3Context.chainId.toString() : config.defaultNetworkId.toString(),
     tokenId: ''
   });
 
@@ -145,9 +145,9 @@ export function CreateInvoiceForm({
         description: formData.description.trim() || undefined,
         clientName: formData.clientName.trim() || undefined,
         clientEmail: formData.clientEmail.trim() || undefined,
-        amount: formData.amount.trim(),
+        amount: parseFloat(formData.amount.trim()),
         dueDate: formData.dueDate || undefined,
-        networkId: formData.networkId,
+        networkId: parseInt(formData.networkId),
         tokenId: formData.tokenId
       };
 

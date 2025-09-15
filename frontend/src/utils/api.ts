@@ -28,13 +28,17 @@ const createApiClient = (): AxiosInstance => {
           url: config.url,
           method: config.method,
           tokenPreview: token.substring(0, 20) + '...',
-          hasAuthHeader: !!config.headers.Authorization
+          tokenLength: token.length,
+          hasAuthHeader: !!config.headers.Authorization,
+          timestamp: new Date().toISOString()
         });
       } else {
-        console.debug('⚠️ API Request: No token available', {
+        console.warn('⚠️ API Request: No token available - this may cause auth errors!', {
           url: config.url,
           method: config.method,
-          hasAuthHeader: !!config.headers.Authorization
+          hasAuthHeader: !!config.headers.Authorization,
+          isServerSide: typeof window === 'undefined',
+          timestamp: new Date().toISOString()
         });
       }
 
@@ -87,6 +91,13 @@ const createApiClient = (): AxiosInstance => {
 
         // Handle authentication errors
         if (status === 401 || data?.error?.code === ErrorCodes.UNAUTHORIZED) {
+          console.error('🚫 Authentication error detected:', {
+            status,
+            url: error.config?.url,
+            method: error.config?.method,
+            hasAuthHeader: !!error.config?.headers?.Authorization,
+            errorData: data
+          });
           handleAuthError();
         }
 
@@ -346,6 +357,9 @@ export const invoiceApi = {
   getPublic: (id: string) =>
     apiRequest.get(apiEndpoints.invoices.public(id)),
 
+  getClientInvoice: (token: string) =>
+    apiRequest.get(`/invoices/client/${token}`),
+
   update: (id: string, data: any) =>
     apiRequest.put(apiEndpoints.invoices.byId(id), data),
 
@@ -354,6 +368,18 @@ export const invoiceApi = {
 
   send: (id: string) =>
     apiRequest.post(apiEndpoints.invoices.send(id)),
+
+  bulkSend: (ids: string[]) =>
+    apiRequest.post('/invoices/bulk/send', { ids }),
+
+  bulkCancel: (ids: string[]) =>
+    apiRequest.post('/invoices/bulk/cancel', { ids }),
+
+  bulkDelete: (ids: string[]) =>
+    apiRequest.post('/invoices/bulk/delete', { ids }),
+
+  duplicate: (id: string) =>
+    apiRequest.post(`/invoices/${id}/duplicate`),
 
   getUserInvoices: (params?: {
     limit?: number;
@@ -371,6 +397,11 @@ export const paymentApi = {
       invoice_id: invoiceId,
       tx_hash: txHash,
       from_address: fromAddress,
+    }),
+
+  submitPayment: (invoiceId: string, txHash: string) =>
+    apiRequest.post(`/invoices/${invoiceId}/pay`, {
+      tx_hash: txHash,
     }),
 
   getById: (id: string) =>

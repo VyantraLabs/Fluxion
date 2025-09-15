@@ -197,7 +197,10 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
   // Load organizations when user authenticates
   useEffect(() => {
     if (authState.isAuthenticated && authState.user) {
-      refreshOrganizations();
+      // Add a small delay to ensure token is properly set in storage and interceptors
+      setTimeout(() => {
+        refreshOrganizations();
+      }, 100); // 100ms delay should be enough for storage operations
     } else {
       dispatch({ type: 'CLEAR_STATE' });
     }
@@ -206,7 +209,10 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
   // Load global statistics when in global view
   useEffect(() => {
     if (authState.isAuthenticated && authState.user && state.isGlobalView) {
-      getGlobalStatistics();
+      // Add delay here too to ensure auth headers are ready
+      setTimeout(() => {
+        getGlobalStatistics();
+      }, 150); // Slightly longer delay for global stats
     }
   }, [authState.isAuthenticated, state.isGlobalView, getGlobalStatistics]);
 

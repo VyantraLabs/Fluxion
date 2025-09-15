@@ -1,7 +1,7 @@
 import { WalletAddress, TransactionHash, DateString } from './common';
 
 // Invoice status types (updated to match backend)
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'partial';
+export type InvoiceStatus = 'draft' | 'created' | 'initiated' | 'sent' | 'pending' | 'paid' | 'overdue' | 'cancelled' | 'partial';
 
 // Line item types
 export interface LineItem {

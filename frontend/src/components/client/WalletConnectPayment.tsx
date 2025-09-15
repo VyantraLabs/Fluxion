@@ -70,12 +70,16 @@ export const WalletConnectPayment: React.FC<WalletConnectPaymentProps> = ({
         connectWallet();
       };
 
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
+      if (window.ethereum) {
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
+      }
 
       return () => {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum.removeListener('chainChanged', handleChainChanged);
+        if (window.ethereum) {
+          window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+          window.ethereum.removeListener('chainChanged', handleChainChanged);
+        }
       };
     }
   }, []);
@@ -196,6 +200,10 @@ export const WalletConnectPayment: React.FC<WalletConnectPaymentProps> = ({
           to: token.contractAddress,
           data: `0xa9059cbb${paymentAddress.slice(2).padStart(64, '0')}${Math.floor(amount * Math.pow(10, token.decimals)).toString(16).padStart(64, '0')}`,
         };
+      }
+
+      if (!window.ethereum) {
+        throw new Error('MetaMask is not available');
       }
 
       const hash = await window.ethereum.request({

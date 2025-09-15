@@ -194,7 +194,7 @@ export const InvoiceCreateForm: React.FC<InvoiceCreateFormProps> = ({
         clientEmail: formData.clientEmail,
         amount: parseFloat(formData.amount) || 0,
         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined,
-        networkId: parseInt(formData.networkId) || undefined,
+        networkId: formData.networkId ? parseInt(formData.networkId) : 1,
         tokenId: formData.tokenId,
         status: 'draft'
       };

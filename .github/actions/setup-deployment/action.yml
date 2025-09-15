@@ -1,0 +1,64 @@
+name: 'Setup Deployment Tools'
+description: 'Sets up AWS SAM CLI, Node.js, and other deployment dependencies'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20.x'
+  python-version:
+    description: 'Python version for SAM CLI'
+    required: false
+    default: '3.9'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: |
+          main-lambda/package-lock.json
+          notification-lambda/package-lock.json
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Setup AWS SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Install AWS CLI
+      shell: bash
+      run: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install --update
+
+    - name: Validate AWS configuration
+      shell: bash
+      run: |
+        aws sts get-caller-identity
+        sam --version
+
+    - name: Setup deployment cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.sam/cache
+          ~/.npm
+        key: deployment-tools-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          deployment-tools-${{ runner.os }}-

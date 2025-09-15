@@ -1,0 +1,239 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/Lambda", "Invocations", "FunctionName", "fluxion-main-prod", { "stat": "Sum" } ],
+          [ ".", "Duration", ".", ".", { "stat": "Average" } ],
+          [ ".", "Errors", ".", ".", { "stat": "Sum" } ],
+          [ ".", "Throttles", ".", ".", { "stat": "Sum" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Main Lambda Performance",
+        "period": 300,
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Error Threshold",
+              "value": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/ApiGateway", "Count", "ApiName", "fluxion-api-prod", "Stage", "prod" ],
+          [ ".", "4XXError", ".", ".", ".", "." ],
+          [ ".", "5XXError", ".", ".", ".", "." ],
+          [ ".", "Latency", ".", ".", ".", ".", { "stat": "Average" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "API Gateway Metrics",
+        "period": 300,
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Latency SLA",
+              "value": 2000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "fluxion-config-prod" ],
+          [ ".", "ConsumedWriteCapacityUnits", ".", "." ],
+          [ ".", "ThrottledRequests", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "DynamoDB Config Table",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "fluxion-cache-prod" ],
+          [ ".", "ConsumedWriteCapacityUnits", ".", "." ],
+          [ ".", "ThrottledRequests", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "DynamoDB Cache Table",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/SQS", "NumberOfMessagesSent", "QueueName", "fluxion-notifications-prod" ],
+          [ ".", "NumberOfMessagesReceived", ".", "." ],
+          [ ".", "ApproximateNumberOfMessagesVisible", ".", "." ],
+          [ ".", "NumberOfMessagesDeleted", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Notification Queue",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/Lambda", "Invocations", "FunctionName", "fluxion-notification-prod", { "stat": "Sum" } ],
+          [ ".", "Duration", ".", ".", { "stat": "Average" } ],
+          [ ".", "Errors", ".", ".", { "stat": "Sum" } ],
+          [ ".", "ConcurrentExecutions", ".", ".", { "stat": "Maximum" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Notification Lambda Performance",
+        "period": 300
+      }
+    },
+    {
+      "type": "log",
+      "x": 12,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "query": "SOURCE '/aws/lambda/fluxion-main-prod'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
+        "region": "us-east-1",
+        "title": "Recent Errors - Main Lambda",
+        "view": "table"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 18,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/Billing", "EstimatedCharges", "Currency", "USD", "ServiceName", "AmazonApiGateway" ],
+          [ "...", "AWSLambda" ],
+          [ "...", "AmazonDynamoDB" ],
+          [ "...", "AmazonSQS" ],
+          [ "...", "AmazonCloudWatch" ]
+        ],
+        "view": "singleValue",
+        "region": "us-east-1",
+        "title": "Current Month Costs",
+        "period": 2592000,
+        "stat": "Maximum"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 18,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "metrics": [
+          [ "AWS/Lambda", "Invocations", "FunctionName", "fluxion-main-prod", { "stat": "Sum" } ]
+        ],
+        "view": "singleValue",
+        "region": "us-east-1",
+        "title": "Lambda Invocations (Month)",
+        "period": 2592000,
+        "sparkline": true
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 21,
+      "width": 6,
+      "height": 3,
+      "properties": {
+        "metrics": [
+          [ "AWS/ApiGateway", "Count", "ApiName", "fluxion-api-prod", "Stage", "prod", { "stat": "Sum" } ]
+        ],
+        "view": "singleValue",
+        "region": "us-east-1",
+        "title": "API Requests (Month)",
+        "period": 2592000,
+        "sparkline": true
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/Lambda", "Duration", "FunctionName", "fluxion-main-prod", { "stat": "Average" } ],
+          [ "AWS/ApiGateway", "Latency", "ApiName", "fluxion-api-prod", "Stage", "prod", { "stat": "Average" } ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "title": "Performance Trends (7 days)",
+        "period": 3600,
+        "start": "-P7D",
+        "end": "P0D"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 24,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "query": "SOURCE '/aws/lambda/fluxion-main-prod'\n| fields @timestamp, @message, @requestId\n| filter @message like /authentication/\n| stats count() by bin(5m)\n| sort @timestamp desc",
+        "region": "us-east-1",
+        "title": "Authentication Activity",
+        "view": "table"
+      }
+    }
+  ]
+}

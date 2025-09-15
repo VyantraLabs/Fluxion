@@ -5,11 +5,14 @@
   "scripts": {
     "dev": "next dev -p ${PORT:-3002}",
     "build": "next build",
+    "build:static": "NEXT_OUTPUT_MODE=export next build",
     "start": "next start -p ${PORT:-3002}",
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "deploy:vercel": "vercel --prod",
+    "deploy:preview": "vercel"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.1",

@@ -1,0 +1,407 @@
+# CloudWatch Alarms Configuration for Fluxion Production Monitoring
+
+# ====================================
+# CRITICAL PRODUCTION ALARMS
+# ====================================
+
+# Lambda Function Health
+MainLambdaErrorRate:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-Main-Lambda-ErrorRate-${Environment}'
+    AlarmDescription: 'Main Lambda function error rate is high'
+    MetricName: ErrorRate
+    Namespace: AWS/Lambda
+    Statistic: Average
+    Period: 300
+    EvaluationPeriods: 2
+    Threshold: 0.05  # 5% error rate
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: FunctionName
+        Value: !Ref MainLambda
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+    TreatMissingData: notBreaching
+
+MainLambdaDuration:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-Main-Lambda-Duration-${Environment}'
+    AlarmDescription: 'Main Lambda function duration is high'
+    MetricName: Duration
+    Namespace: AWS/Lambda
+    Statistic: Average
+    Period: 300
+    EvaluationPeriods: 3
+    Threshold: 15000  # 15 seconds
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: FunctionName
+        Value: !Ref MainLambda
+    AlarmActions:
+      - !Ref WarningAlertTopic
+
+MainLambdaConcurrency:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-Main-Lambda-Concurrency-${Environment}'
+    AlarmDescription: 'Main Lambda approaching concurrency limit'
+    MetricName: ConcurrentExecutions
+    Namespace: AWS/Lambda
+    Statistic: Maximum
+    Period: 60
+    EvaluationPeriods: 2
+    Threshold: 45  # 90% of 50 reserved concurrency
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: FunctionName
+        Value: !Ref MainLambda
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+
+# API Gateway Health
+APIGateway4XXErrors:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-API-4XX-Errors-${Environment}'
+    AlarmDescription: 'API Gateway 4XX error rate is high'
+    MetricName: 4XXError
+    Namespace: AWS/ApiGateway
+    Statistic: Sum
+    Period: 300
+    EvaluationPeriods: 2
+    Threshold: 20  # 20 errors in 5 minutes
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: ApiName
+        Value: !Sub 'fluxion-api-${Environment}'
+      - Name: Stage
+        Value: !Ref Environment
+    AlarmActions:
+      - !Ref WarningAlertTopic
+
+APIGateway5XXErrors:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-API-5XX-Errors-${Environment}'
+    AlarmDescription: 'API Gateway 5XX error rate is critical'
+    MetricName: 5XXError
+    Namespace: AWS/ApiGateway
+    Statistic: Sum
+    Period: 300
+    EvaluationPeriods: 1
+    Threshold: 5  # 5 errors in 5 minutes
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: ApiName
+        Value: !Sub 'fluxion-api-${Environment}'
+      - Name: Stage
+        Value: !Ref Environment
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+
+APIGatewayLatency:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-API-Latency-${Environment}'
+    AlarmDescription: 'API Gateway latency is high'
+    MetricName: Latency
+    Namespace: AWS/ApiGateway
+    Statistic: Average
+    Period: 300
+    EvaluationPeriods: 3
+    Threshold: 5000  # 5 seconds
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: ApiName
+        Value: !Sub 'fluxion-api-${Environment}'
+      - Name: Stage
+        Value: !Ref Environment
+    AlarmActions:
+      - !Ref WarningAlertTopic
+
+# DynamoDB Health
+ConfigTableReadThrottles:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-ConfigTable-ReadThrottles-${Environment}'
+    AlarmDescription: 'Config table experiencing read throttling'
+    MetricName: ReadThrottles
+    Namespace: AWS/DynamoDB
+    Statistic: Sum
+    Period: 300
+    EvaluationPeriods: 1
+    Threshold: 1
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: TableName
+        Value: !Ref ConfigTable
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+
+ConfigTableWriteThrottles:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-ConfigTable-WriteThrottles-${Environment}'
+    AlarmDescription: 'Config table experiencing write throttling'
+    MetricName: WriteThrottles
+    Namespace: AWS/DynamoDB
+    Statistic: Sum
+    Period: 300
+    EvaluationPeriods: 1
+    Threshold: 1
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: TableName
+        Value: !Ref ConfigTable
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+
+CacheTableReadThrottles:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-CacheTable-ReadThrottles-${Environment}'
+    AlarmDescription: 'Cache table experiencing read throttling'
+    MetricName: ReadThrottles
+    Namespace: AWS/DynamoDB
+    Statistic: Sum
+    Period: 300
+    EvaluationPeriods: 1
+    Threshold: 5
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: TableName
+        Value: !Ref CacheTable
+    AlarmActions:
+      - !Ref WarningAlertTopic
+
+# SQS Queue Health
+NotificationQueueDLQ:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-NotificationDLQ-Messages-${Environment}'
+    AlarmDescription: 'Messages in notification dead letter queue'
+    MetricName: ApproximateNumberOfVisibleMessages
+    Namespace: AWS/SQS
+    Statistic: Average
+    Period: 300
+    EvaluationPeriods: 1
+    Threshold: 1
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: QueueName
+        Value: !Sub 'fluxion-notifications-dlq-${Environment}'
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+
+NotificationQueueBacklog:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-NotificationQueue-Backlog-${Environment}'
+    AlarmDescription: 'Large backlog in notification queue'
+    MetricName: ApproximateNumberOfVisibleMessages
+    Namespace: AWS/SQS
+    Statistic: Average
+    Period: 300
+    EvaluationPeriods: 2
+    Threshold: 100
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: QueueName
+        Value: !Sub 'fluxion-notifications-${Environment}'
+    AlarmActions:
+      - !Ref WarningAlertTopic
+
+# ====================================
+# FREE TIER MONITORING ALARMS
+# ====================================
+
+LambdaInvocationLimit:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-Lambda-FreeTier-80Percent-${Environment}'
+    AlarmDescription: 'Lambda invocations approaching free tier limit'
+    MetricName: Invocations
+    Namespace: AWS/Lambda
+    Statistic: Sum
+    Period: 2592000  # 30 days
+    EvaluationPeriods: 1
+    Threshold: 800000  # 80% of 1M free tier
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: FunctionName
+        Value: !Ref MainLambda
+    AlarmActions:
+      - !Ref FreeTierAlertTopic
+
+APIGatewayRequestLimit:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-APIGateway-FreeTier-80Percent-${Environment}'
+    AlarmDescription: 'API Gateway requests approaching free tier limit'
+    MetricName: Count
+    Namespace: AWS/ApiGateway
+    Statistic: Sum
+    Period: 2592000  # 30 days
+    EvaluationPeriods: 1
+    Threshold: 800000  # 80% of 1M free tier
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: ApiName
+        Value: !Sub 'fluxion-api-${Environment}'
+      - Name: Stage
+        Value: !Ref Environment
+    AlarmActions:
+      - !Ref FreeTierAlertTopic
+
+# ====================================
+# BUSINESS METRICS ALARMS
+# ====================================
+
+# Custom metric for successful invoice payments
+InvoicePaymentSuccessRate:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-InvoicePayments-LowSuccessRate-${Environment}'
+    AlarmDescription: 'Invoice payment success rate is low'
+    MetricName: InvoicePaymentSuccess
+    Namespace: Fluxion/Business
+    Statistic: Average
+    Period: 1800  # 30 minutes
+    EvaluationPeriods: 2
+    Threshold: 0.95  # 95% success rate
+    ComparisonOperator: LessThanThreshold
+    AlarmActions:
+      - !Ref BusinessAlertTopic
+    TreatMissingData: notBreaching
+
+# Authentication failures
+AuthenticationFailureRate:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-Authentication-HighFailureRate-${Environment}'
+    AlarmDescription: 'High rate of authentication failures'
+    MetricName: AuthenticationFailures
+    Namespace: Fluxion/Security
+    Statistic: Sum
+    Period: 300
+    EvaluationPeriods: 2
+    Threshold: 20  # 20 failures in 5 minutes
+    ComparisonOperator: GreaterThanThreshold
+    AlarmActions:
+      - !Ref SecurityAlertTopic
+
+# ====================================
+# COST MONITORING ALARMS
+# ====================================
+
+EstimatedCharges:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-EstimatedCharges-${Environment}'
+    AlarmDescription: 'AWS estimated charges are high'
+    MetricName: EstimatedCharges
+    Namespace: AWS/Billing
+    Statistic: Maximum
+    Period: 86400  # Daily
+    EvaluationPeriods: 1
+    Threshold: 5.00  # $5 threshold
+    ComparisonOperator: GreaterThanThreshold
+    Dimensions:
+      - Name: Currency
+        Value: USD
+    AlarmActions:
+      - !Ref CostAlertTopic
+
+# ====================================
+# SNS TOPICS FOR ALERTS
+# ====================================
+
+CriticalAlertTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    TopicName: !Sub 'fluxion-critical-alerts-${Environment}'
+    DisplayName: 'Fluxion Critical Alerts'
+    Subscription:
+      - Protocol: email
+        Endpoint: alerts@fluxion.app
+      # Add Slack webhook subscription
+      - Protocol: https
+        Endpoint: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+
+WarningAlertTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    TopicName: !Sub 'fluxion-warning-alerts-${Environment}'
+    DisplayName: 'Fluxion Warning Alerts'
+
+FreeTierAlertTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    TopicName: !Sub 'fluxion-freetier-alerts-${Environment}'
+    DisplayName: 'Fluxion Free Tier Alerts'
+
+BusinessAlertTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    TopicName: !Sub 'fluxion-business-alerts-${Environment}'
+    DisplayName: 'Fluxion Business Alerts'
+
+SecurityAlertTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    TopicName: !Sub 'fluxion-security-alerts-${Environment}'
+    DisplayName: 'Fluxion Security Alerts'
+
+CostAlertTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    TopicName: !Sub 'fluxion-cost-alerts-${Environment}'
+    DisplayName: 'Fluxion Cost Alerts'
+
+# ====================================
+# COMPOSITE ALARMS
+# ====================================
+
+# System health composite alarm
+SystemHealthAlarm:
+  Type: AWS::CloudWatch::CompositeAlarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-SystemHealth-${Environment}'
+    AlarmDescription: 'Overall system health indicator'
+    AlarmRule: !Sub |
+      ALARM("${MainLambdaErrorRate}") OR 
+      ALARM("${APIGateway5XXErrors}") OR 
+      ALARM("${ConfigTableReadThrottles}") OR 
+      ALARM("${NotificationQueueDLQ}")
+    AlarmActions:
+      - !Ref CriticalAlertTopic
+
+# Performance degradation composite alarm
+PerformanceDegradationAlarm:
+  Type: AWS::CloudWatch::CompositeAlarm
+  Properties:
+    AlarmName: !Sub 'Fluxion-PerformanceDegradation-${Environment}'
+    AlarmDescription: 'System performance is degrading'
+    AlarmRule: !Sub |
+      ALARM("${MainLambdaDuration}") AND 
+      ALARM("${APIGatewayLatency}")
+    AlarmActions:
+      - !Ref WarningAlertTopic
+
+# ====================================
+# ALARM TAGS
+# ====================================
+
+Tags:
+  - Key: Environment
+    Value: !Ref Environment
+  - Key: Service
+    Value: Fluxion
+  - Key: Component
+    Value: Monitoring
+  - Key: Owner
+    Value: platform-team
+  - Key: CostCenter
+    Value: engineering
