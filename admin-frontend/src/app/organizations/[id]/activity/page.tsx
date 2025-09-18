@@ -292,7 +292,7 @@ export default function OrganizationActivityPage() {
       <AdminLayout
         title={`${organization?.name || 'Organization'} Activity`}
         subtitle={`Monitor activity and events for ${organization?.name || 'this organization'}`}
-        requiredPermission="organizations:read"
+        requiredPermissions={["organizations:read"]}
       >
         {/* Organization Header */}
         {organization && (

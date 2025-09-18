@@ -27,7 +27,7 @@ export default function DebugPage() {
       console.log('Debug result:', result)
     } catch (error) {
       console.error('Debug error:', error)
-      setDebugInfo({ error: error.message })
+      setDebugInfo({ error: error instanceof Error ? error.message : String(error) })
     } finally {
       setIsLoadingDebug(false)
     }
@@ -145,12 +145,12 @@ export default function DebugPage() {
                   </div>
                 </div>
 
-                {user?.organizationRoles && user.organizationRoles.length > 0 && (
+                {(user as any)?.organizationRoles && (user as any).organizationRoles.length > 0 && (
                   <div>
                     <span className="font-medium">Organization Roles:</span>
                     <div className="mt-1">
                       <div className="flex flex-wrap gap-2">
-                        {user.organizationRoles.map(role => (
+                        {(user as any).organizationRoles.map((role: string) => (
                           <span key={role} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
                             {role}
                           </span>

@@ -335,7 +335,7 @@ export default function UsersPage() {
       <AdminLayout
         title="System Users"
         subtitle="Manage all users across the platform with their roles and organizations"
-        requiredPermission="users:read"
+        requiredPermissions={["users:read"]}
       >
       {/* Filters */}
       <div className="admin-card p-6 mb-6">
@@ -485,7 +485,7 @@ export default function UsersPage() {
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900">
-                Manage Roles - {selectedUser.name || selectedUser.wallet_address}
+                Manage Roles - {(selectedUser as any).name || selectedUser.wallet_address}
               </h3>
               <button
                 onClick={() => {

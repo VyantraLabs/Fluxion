@@ -30,9 +30,12 @@ interface SimpleUser {
 
 class SimplifiedAdminApi {
   private baseUrl: string
+  private basePath: string
 
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+    // Use admin service URL (port 3001) instead of main service
+    this.baseUrl = process.env.NEXT_PUBLIC_ADMIN_SERVICE_URL || 'http://localhost:3001'
+    this.basePath = process.env.NEXT_PUBLIC_ADMIN_BASE_PATH || '/admin'
   }
 
   private getAuthHeaders(): HeadersInit {
@@ -49,7 +52,8 @@ class SimplifiedAdminApi {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}/admin${endpoint}`
+    // Use configurable base path instead of hardcoded /api
+    const url = `${this.baseUrl}${endpoint.startsWith('/admin') ? endpoint : `${this.basePath}${endpoint}`}`
     const headers = {
       ...this.getAuthHeaders(),
       ...options.headers,
@@ -85,20 +89,11 @@ class SimplifiedAdminApi {
   async getAuthMessage(walletAddress: string): Promise<ApiResponse<{ message: string }>> {
     console.log('🔄 Admin API: Getting auth message for wallet:', walletAddress)
     
-    const response = await fetch(`${this.baseUrl}/admin/auth/message`, {
+    // Use the actual admin service auth/message endpoint
+    return this.request('/admin/auth/message', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ wallet_address: walletAddress }),
+      body: JSON.stringify({ wallet_address: walletAddress })
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
-    }
-
-    return response.json()
   }
 
   async verifySignature(
@@ -108,41 +103,24 @@ class SimplifiedAdminApi {
   ): Promise<ApiResponse<{ token: string; user: SimpleUser }>> {
     console.log('🔄 Admin API: Verifying signature for wallet:', walletAddress)
     
-    const response = await fetch(`${this.baseUrl}/admin/auth/verify`, {
+    return this.request('/admin/auth/verify', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         wallet_address: walletAddress,
         signature,
         message
-      }),
+      })
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
-    }
-
-    const result = await response.json()
-    
-    // Validate that the response contains required data
-    if (!result.success || !result.data?.user || !result.data?.token) {
-      throw new Error('Authentication failed - invalid response format')
-    }
-
-    return result
   }
 
   // === SYSTEM MANAGEMENT METHODS ===
   
   async getSystemStats(): Promise<ApiResponse<any>> {
-    return this.request('/system/stats')
+    return this.request('/admin/system/stats')
   }
 
   async getSystemHealth(): Promise<ApiResponse<any>> {
-    return this.request('/system/health')
+    return this.request('/admin/system/health')
   }
 
   // === USER MANAGEMENT METHODS ===
@@ -159,7 +137,7 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/users${query ? `?${query}` : ''}`
+    const endpoint = `/admin/users${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }
@@ -178,13 +156,13 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/organizations${query ? `?${query}` : ''}`
+    const endpoint = `/admin/organizations${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }
 
   async getOrganization(id: string): Promise<ApiResponse<any>> {
-    return this.request(`/organizations/${id}`)
+    return this.request(`/admin/organizations/${id}`)
   }
 
   async getOrganizationUsers(id: string, params?: any): Promise<ApiResponse<any>> {
@@ -199,7 +177,7 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/organizations/${id}/users${query ? `?${query}` : ''}`
+    const endpoint = `/admin/organizations/${id}/users${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }
@@ -216,7 +194,7 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/organizations/${id}/activity${query ? `?${query}` : ''}`
+    const endpoint = `/admin/organizations/${id}/activity${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }
@@ -224,7 +202,7 @@ class SimplifiedAdminApi {
   // === USER MANAGEMENT ENHANCED METHODS ===
   
   async getUser(id: string): Promise<ApiResponse<any>> {
-    return this.request(`/users/${id}`)
+    return this.request(`/admin/users/${id}`)
   }
 
   async getUserActivity(id: string, params?: any): Promise<ApiResponse<any>> {
@@ -239,7 +217,7 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/users/${id}/activity${query ? `?${query}` : ''}`
+    const endpoint = `/admin/users/${id}/activity${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }
@@ -249,14 +227,14 @@ class SimplifiedAdminApi {
     isSuperAdmin?: boolean
     reason?: string
   }): Promise<ApiResponse<any>> {
-    return this.request(`/users/${id}/admin-status`, {
+    return this.request(`/admin/users/${id}/admin-status`, {
       method: 'PUT',
       body: JSON.stringify(data)
     })
   }
 
   async updateUserRoles(userId: string, organizationId: string, roles: string[]): Promise<ApiResponse<any>> {
-    return this.request(`/users/${userId}/roles`, {
+    return this.request(`/admin/users/${userId}/roles`, {
       method: 'PUT',
       body: JSON.stringify({
         organizationId,
@@ -266,7 +244,7 @@ class SimplifiedAdminApi {
   }
 
   async removeUserFromOrganization(userId: string, organizationId: string, reason?: string): Promise<ApiResponse<any>> {
-    return this.request(`/organizations/${organizationId}/users/${userId}`, {
+    return this.request(`/admin/organizations/${organizationId}/users/${userId}`, {
       method: 'DELETE',
       body: JSON.stringify({ reason })
     })
@@ -286,7 +264,7 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/activity${query ? `?${query}` : ''}`
+    const endpoint = `/admin/activity-logs${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }
@@ -294,12 +272,12 @@ class SimplifiedAdminApi {
   // === ROLE MANAGEMENT METHODS ===
   
   async getAvailableRoles(): Promise<ApiResponse<any>> {
-    return this.request('/roles')
+    return this.request('/admin/roles')
   }
 
   async getUserRoles(userId: string, organizationId?: string): Promise<ApiResponse<any>> {
     const params = organizationId ? `?organizationId=${organizationId}` : ''
-    return this.request(`/users/${userId}/roles${params}`)
+    return this.request(`/admin/users/${userId}/roles${params}`)
   }
 
   // === SYSTEM SETTINGS METHODS ===
@@ -316,7 +294,7 @@ class SimplifiedAdminApi {
     }
 
     const query = searchParams.toString()
-    const endpoint = `/settings${query ? `?${query}` : ''}`
+    const endpoint = `/admin/settings${query ? `?${query}` : ''}`
     
     return this.request(endpoint)
   }

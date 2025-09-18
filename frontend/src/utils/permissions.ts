@@ -81,18 +81,18 @@ export class UserPermissions {
     const rolePermissions = ROLE_PERMISSIONS[this.role as RoleName] || [];
     
     // Check for wildcard permissions
-    if (rolePermissions.includes('*')) {
+    if ((rolePermissions as unknown as string[]).includes('*')) {
       return true;
     }
     
     // Check for exact permission match
-    if (rolePermissions.includes(permission)) {
+    if ((rolePermissions as unknown as string[]).includes(permission)) {
       return true;
     }
     
     // Check for wildcard category matches (e.g., 'user:*' matches 'user:manage')
     const category = permission.split(':')[0];
-    if (rolePermissions.includes(`${category}:*`)) {
+    if ((rolePermissions as unknown as string[]).includes(`${category}:*`)) {
       return true;
     }
     

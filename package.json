@@ -1,28 +1,41 @@
 {
-  "name": "fluxion-backend",
+  "name": "fluxion-workspace",
   "version": "1.0.0",
-  "description": "Fluxion MVP - Crypto-native invoicing backend",
-  "main": "index.js",
+  "description": "Fluxion - Microservices Web3 Payment Platform",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "packageManager": "pnpm@8.15.0",
   "scripts": {
-    "build": "npm run build:main && npm run build:notification",
-    "build:main": "cd main-lambda && npm run build",
-    "build:notification": "cd notification-lambda && npm run build",
-    "test": "npm run test:main && npm run test:notification",
-    "test:main": "cd main-lambda && npm test",
-    "test:notification": "cd notification-lambda && npm test",
-    "test:watch": "npm run test:main -- --watch",
-    "lint": "npm run lint:main && npm run lint:notification",
-    "lint:main": "cd main-lambda && npm run lint",
-    "lint:notification": "cd notification-lambda && npm run lint",
-    "deploy:dev": "sam build && sam deploy --config-env dev",
-    "deploy:prod": "sam build && sam deploy --config-env production",
-    "local": "sam local start-api",
-    "postinstall": "cd main-lambda && npm install && cd ../notification-lambda && npm install"
+    "build": "pnpm -r build",
+    "build:shared": "pnpm --filter @fluxion/shared-lib build",
+    "build:services": "pnpm --filter './services/*' build",
+    "build:main": "pnpm --filter main-service build",
+    "build:admin": "pnpm --filter admin-service build",
+    "dev": "pnpm -r --parallel dev",
+    "dev:main": "pnpm --filter main-service dev", 
+    "dev:admin": "pnpm --filter admin-service dev",
+    "test": "pnpm -r test",
+    "test:main": "pnpm --filter main-service test",
+    "test:admin": "pnpm --filter admin-service test",
+    "test:shared": "pnpm --filter @fluxion/shared-lib test",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean",
+    "setup": "pnpm install && pnpm build:shared",
+    "start:services": "pnpm -r --parallel start",
+    "migration:generate": "pnpm --filter @fluxion/shared-lib migration:generate",
+    "migration:run": "pnpm --filter @fluxion/shared-lib migration:run",
+    "migration:revert": "pnpm --filter @fluxion/shared-lib migration:revert"
   },
-  "keywords": ["crypto", "invoicing", "polygon", "usdc", "web3", "payments"],
+  "keywords": ["crypto", "invoicing", "polygon", "usdc", "web3", "payments", "microservices"],
   "author": "Fluxion Team",
   "license": "MIT",
   "devDependencies": {
-    "@aws-sdk/client-sam": "^3.0.0"
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   }
 }

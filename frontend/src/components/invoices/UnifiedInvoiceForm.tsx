@@ -413,7 +413,7 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
           response = await invoiceApi.saveDraft(draftData);
         }
 
-        const invoice = handleApiResponse(response);
+        const invoice = handleApiResponse<any>(response);
         
         // Clear draft from localStorage
         if (autoSave) {
@@ -483,7 +483,7 @@ export const UnifiedInvoiceForm: React.FC<UnifiedInvoiceFormProps> = ({
           response = await invoiceApi.create(invoiceData);
         }
 
-        const invoice = handleApiResponse(response);
+        const invoice = handleApiResponse<any>(response);
 
         // Send invoice if requested
         if (sendImmediately && formData.clientEmail) {

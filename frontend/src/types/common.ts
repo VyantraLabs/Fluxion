@@ -6,6 +6,7 @@ export interface ApiResponse<T = any> {
     code: string;
     message: string;
     details?: any;
+    validation_errors?: Record<string, string[]>;
   };
   meta: {
     requestId: string;

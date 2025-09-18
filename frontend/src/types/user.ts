@@ -162,11 +162,11 @@ export interface OrganizationContextActions {
 }
 
 export interface UserContextActions {
-  login: (walletAddress: WalletAddress, signature: string, message: string) => Promise<void>;
+  login: (walletAddress: string, signature: string, message: string) => Promise<void>;
   logout: () => void;
   updateProfile: (updates: UpdateUserProfileRequest) => Promise<void>;
   refreshUser: () => Promise<void>;
-  checkUserExists: (walletAddress: WalletAddress) => Promise<UserExistsResponse>;
+  checkUserExists: (walletAddress: string) => Promise<UserExistsResponse>;
   completeOnboarding: (data: CompleteOnboardingRequest) => Promise<void>;
 }
 

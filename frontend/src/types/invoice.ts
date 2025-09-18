@@ -69,7 +69,7 @@ export interface PaymentSummary {
 }
 
 // Invoice with payment information
-export interface InvoiceWithPayments extends Invoice {
+export interface InvoiceWithPayments extends Omit<Invoice, 'payments'> {
   payments: PaymentSummary[];
 }
 

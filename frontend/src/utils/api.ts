@@ -2,12 +2,16 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { config, apiEndpoints } from './config';
 import { ApiResponse, PaginatedResponse, ErrorCodes, TenantContext } from '@/types/common';
 import { authStorage } from './storage';
+// Import from api-client for unified service access
+import { mainApi, apiClient as unifiedApiClient } from '@/lib/api-client';
+// Import service-specific APIs for microservices routing
+import { mainApi as serviceMainApi, adminApi as serviceAdminApi } from '@/lib/api-services';
 
-// Create axios instance
+// Create axios instance (Legacy - for backward compatibility)
 const createApiClient = (): AxiosInstance => {
   const client = axios.create({
-    baseURL: config.api.baseUrl,
-    timeout: config.api.timeout,
+    baseURL: config.api.mainService.baseUrl, // Use main service as default
+    timeout: config.api.mainService.timeout,
     headers: {
       'Content-Type': 'application/json',
       'X-Client-Type': 'frontend',
@@ -143,46 +147,80 @@ const createApiClient = (): AxiosInstance => {
   return client;
 };
 
-// Create API client instance
-export const apiClient = createApiClient();
+// Create legacy API client instance for backward compatibility
+export const legacyApiClient = createApiClient();
+
+// Re-export the unified API client as the default apiClient
+export const apiClient = unifiedApiClient;
 
 // Helper functions
 const generateRequestId = (): string => {
-  return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `req_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 };
 
 const getAuthToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const token = authStorage.getToken();
+  if (typeof window === 'undefined') {
+    console.debug('🔍 Legacy API Client - Server-side rendering, no token available');
+    return null;
+  }
+  
+  let token = authStorage.getToken();
+  const directToken = localStorage.getItem('fluxion_auth_token');
   
   // Enhanced debug logging for authentication issues
-  console.debug('🔍 API Client - Getting auth token:', {
-    exists: !!token,
-    length: token?.length || 0,
-    preview: token ? token.substring(0, 20) + '...' : 'null',
-    rawLocalStorage: localStorage.getItem('fluxion_auth_token') ? 'exists' : 'missing',
+  console.debug('🔍 Legacy API Client - Getting auth token:', {
+    tokenExists: !!token,
+    tokenLength: token?.length || 0,
+    tokenPreview: token ? token.substring(0, 25) + '...' : 'null',
+    rawTokenExists: !!directToken,
+    rawTokenLength: directToken?.length || 0,
     allFluxionKeys: Object.keys(localStorage).filter(k => k.includes('fluxion')),
-    authStorageMethod: typeof authStorage.getToken
+    authStorageMethodType: typeof authStorage.getToken,
+    timestamp: new Date().toISOString()
   });
   
-  // Additional check - try to retrieve directly from localStorage
-  const directToken = localStorage.getItem('fluxion_auth_token');
-  if (directToken && !token) {
-    console.error('❌ Token exists in localStorage but authStorage.getToken() returns null!');
-    console.debug('Direct token preview:', directToken.substring(0, 50) + '...');
+  // If authStorage returns null but raw localStorage has data, try to parse directly
+  if (!token && directToken) {
+    console.warn('⚠️ Legacy API Client - authStorage.getToken() returned null, trying direct localStorage parsing...');
     
-    // Try parsing the direct token to see what's wrong
     try {
       const parsed = JSON.parse(directToken);
-      console.debug('❌ Direct token structure:', {
-        hasValue: !!parsed.value,
-        hasTimestamp: !!parsed.timestamp,
-        hasExpiration: !!parsed.expiresAt,
-        expired: parsed.expiresAt ? Date.now() > parsed.expiresAt : false
+      console.debug('🔍 Direct parsing attempt:', {
+        hasValue: 'value' in parsed,
+        hasTimestamp: 'timestamp' in parsed,
+        hasExpiration: 'expiresAt' in parsed,
+        isExpired: parsed.expiresAt ? Date.now() > parsed.expiresAt : false,
+        structure: Object.keys(parsed),
+        valueType: typeof parsed.value,
+        valueLength: parsed.value?.length || 0
       });
+      
+      // Check if token is not expired
+      if (parsed.value && (!parsed.expiresAt || Date.now() < parsed.expiresAt)) {
+        console.warn('⚠️ Found valid token via direct parsing - using it!');
+        token = parsed.value;
+      } else {
+        console.warn('⚠️ Token found but expired or invalid');
+      }
     } catch (e) {
-      console.debug('❌ Direct token is not JSON:', e);
+      console.debug('Raw token is not JSON format, might be legacy string format');
+      // If it's not JSON, it might be a legacy string token
+      if (directToken.length > 20) { // Basic length check for token validity
+        console.warn('⚠️ Using raw token as fallback');
+        token = directToken;
+      }
     }
+  }
+  
+  // Final token validation
+  if (token) {
+    console.debug('✅ Legacy API Client - Token retrieved successfully:', {
+      source: token === authStorage.getToken() ? 'authStorage' : 'direct',
+      length: token.length,
+      preview: token.substring(0, 25) + '...'
+    });
+  } else {
+    console.error('❌ Legacy API Client - No valid token found by any method');
   }
   
   return token;
@@ -236,7 +274,7 @@ export const apiRequest = {
     url: string,
     params?: Record<string, any>
   ): Promise<ApiResponse<T>> => {
-    const response = await apiClient.get(url, { params });
+    const response = await legacyApiClient.get(url, { params });
     return response.data;
   },
 
@@ -245,7 +283,7 @@ export const apiRequest = {
     data?: any,
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> => {
-    const response = await apiClient.post(url, data, config);
+    const response = await legacyApiClient.post(url, data, config);
     return response.data;
   },
 
@@ -254,7 +292,7 @@ export const apiRequest = {
     data?: any,
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> => {
-    const response = await apiClient.put(url, data, config);
+    const response = await legacyApiClient.put(url, data, config);
     return response.data;
   },
 
@@ -262,7 +300,7 @@ export const apiRequest = {
     url: string,
     config?: AxiosRequestConfig
   ): Promise<ApiResponse<T>> => {
-    const response = await apiClient.delete(url, config);
+    const response = await legacyApiClient.delete(url, config);
     return response.data;
   },
 };
@@ -275,14 +313,10 @@ export const healthApi = {
 
 export const authApi = {
   getMessage: (walletAddress: string) =>
-    apiRequest.post(apiEndpoints.auth.message, { wallet_address: walletAddress }),
+    mainApi.auth.getMessage(walletAddress),
 
   verifySignature: (walletAddress: string, signature: string, message: string) =>
-    apiRequest.post(apiEndpoints.auth.verify, {
-      wallet_address: walletAddress,
-      signature,
-      message,
-    }),
+    mainApi.auth.verify(walletAddress, signature, message),
 
   createUser: (
     walletAddress: string, 
@@ -319,10 +353,10 @@ export const userApi = {
 
   // Authenticated user endpoints (auth required, no wallet parameter)
   getProfile: () =>
-    apiRequest.get(apiEndpoints.user.profile),
+    mainApi.users.getProfile(),
 
   updateProfile: (data: any) =>
-    apiRequest.put(apiEndpoints.user.profile, data),
+    mainApi.users.updateProfile(data),
 
   deleteProfile: () =>
     apiRequest.delete(apiEndpoints.user.profile),
@@ -336,11 +370,11 @@ export const userApi = {
 
 export const invoiceApi = {
   create: (data: any) =>
-    apiRequest.post(apiEndpoints.invoices.base, { ...data, status: data.status || 'created' }),
+    mainApi.invoices.create({ ...data, status: data.status || 'created' }),
   saveDraft: (data: any) =>
-    apiRequest.post(apiEndpoints.invoices.base, { ...data, status: 'draft' }),
+    mainApi.invoices.create({ ...data, status: 'draft' }),
   createWithStatus: (data: any, status: 'draft' | 'created' | 'initiated' | 'sent') =>
-    apiRequest.post(apiEndpoints.invoices.base, { ...data, status }),
+    mainApi.invoices.create({ ...data, status }),
   
   // Template integration - for now, this just creates a regular invoice
   // TODO: Implement proper template-to-invoice conversion in backend
@@ -352,40 +386,40 @@ export const invoiceApi = {
   },
 
   getById: (id: string) =>
-    apiRequest.get(apiEndpoints.invoices.byId(id)),
+    mainApi.invoices.getById(id),
 
   getPublic: (id: string) =>
     apiRequest.get(apiEndpoints.invoices.public(id)),
 
   getClientInvoice: (token: string) =>
-    apiRequest.get(`/invoices/client/${token}`),
+    apiRequest.get(`${apiEndpoints.invoices.base}/client/${token}`),
 
   update: (id: string, data: any) =>
-    apiRequest.put(apiEndpoints.invoices.byId(id), data),
+    mainApi.invoices.update(id, data),
 
   delete: (id: string) =>
-    apiRequest.delete(apiEndpoints.invoices.byId(id)),
+    mainApi.invoices.delete(id),
 
   send: (id: string) =>
     apiRequest.post(apiEndpoints.invoices.send(id)),
 
   bulkSend: (ids: string[]) =>
-    apiRequest.post('/invoices/bulk/send', { ids }),
+    apiRequest.post(`${apiEndpoints.invoices.base}/bulk/send`, { ids }),
 
   bulkCancel: (ids: string[]) =>
-    apiRequest.post('/invoices/bulk/cancel', { ids }),
+    apiRequest.post(`${apiEndpoints.invoices.base}/bulk/cancel`, { ids }),
 
   bulkDelete: (ids: string[]) =>
-    apiRequest.post('/invoices/bulk/delete', { ids }),
+    apiRequest.post(`${apiEndpoints.invoices.base}/bulk/delete`, { ids }),
 
   duplicate: (id: string) =>
-    apiRequest.post(`/invoices/${id}/duplicate`),
+    apiRequest.post(`${apiEndpoints.invoices.byId(id)}/duplicate`),
 
   getUserInvoices: (params?: {
     limit?: number;
     nextToken?: string;
     status?: string;
-  }) => apiRequest.get(apiEndpoints.invoices.base, params),
+  }) => mainApi.invoices.getAll(params),
 
   getStats: () =>
     apiRequest.get(apiEndpoints.invoices.stats),
@@ -399,10 +433,8 @@ export const paymentApi = {
       from_address: fromAddress,
     }),
 
-  submitPayment: (invoiceId: string, txHash: string) =>
-    apiRequest.post(`/invoices/${invoiceId}/pay`, {
-      tx_hash: txHash,
-    }),
+  submitPayment: (invoiceId: string, txHash: string, payerAddress: string) =>
+    mainApi.payments.submit(invoiceId, txHash, payerAddress),
 
   getById: (id: string) =>
     apiRequest.get(apiEndpoints.payments.byId(id)),
@@ -419,19 +451,19 @@ export const analyticsApi = {
 // Organization API
 export const organizationApi = {
   getAll: () =>
-    apiRequest.get('/organizations'),
+    mainApi.organizations.getAll(),
     
   getById: (id: string) =>
-    apiRequest.get(`/organizations/${id}`),
+    apiRequest.get(`${config.api.basePath}/organizations/${id}`),
     
-  // Organization activity logs (placeholder endpoint - backend implementation needed)
+  // Organization activity logs (routes to main service with proper API base path)
   getActivity: async (orgId: string, params?: {
     limit?: number;
     offset?: number;
     type?: string;
   }) => {
     try {
-      // Attempt to call the real API endpoint
+      // Route to main service for organization activity logs using proper configuration
       const queryParams: Record<string, string> = {};
       if (params?.limit) queryParams.limit = params.limit.toString();
       if (params?.offset) queryParams.offset = params.offset.toString();
@@ -441,7 +473,9 @@ export const organizationApi = {
         ? '?' + new URLSearchParams(queryParams).toString() 
         : '';
         
-      const response = await apiRequest.get(`/organizations/${orgId}/activity${queryString}`);
+      // Use main service with proper API base path for organization activity logs
+      const endpoint = `${config.api.basePath}/organizations/${orgId}/activity${queryString}`;
+      const response = await unifiedApiClient.mainRequest('GET', endpoint);
       
       // Normalize the response format to ensure consistent data structure
       if (response.success && response.data) {
@@ -502,10 +536,10 @@ export const organizationApi = {
   },
   
   getUsers: (orgId: string) =>
-    apiRequest.get(`/organizations/${orgId}/users`),
+    apiRequest.get(`${config.api.basePath}/organizations/${orgId}/users`),
     
   getStats: (orgId: string) =>
-    apiRequest.get(`/organizations/${orgId}/stats`),
+    apiRequest.get(`${config.api.basePath}/organizations/${orgId}/stats`),
 };
 
 // Mock activity logs generator for development
@@ -603,7 +637,7 @@ export const templateApi = {
     limit?: number;
     offset?: number;
     nextToken?: string;
-  }) => apiRequest.get(apiEndpoints.templates.base, params),
+  }) => mainApi.templates.getAll(params),
 
   // Categories (unified endpoint supports both authenticated and unauthenticated access)
   getCategories: () =>
@@ -618,20 +652,20 @@ export const templateApi = {
     apiRequest.post(apiEndpoints.templates.incrementUsage(id)),
 };
 
-// Reminder API
+// Reminder API - Updated to use unified API client
 export const reminderApi = {
   // Reminder CRUD
   create: (data: any) =>
-    apiRequest.post(apiEndpoints.reminders.base, data),
+    mainApi.reminders.create(data),
 
   getById: (id: string) =>
-    apiRequest.get(apiEndpoints.reminders.byId(id)),
+    mainApi.reminders.getById(id),
 
   update: (id: string, data: any) =>
-    apiRequest.put(apiEndpoints.reminders.byId(id), data),
+    mainApi.reminders.update(id, data),
 
   delete: (id: string) =>
-    apiRequest.delete(apiEndpoints.reminders.byId(id)),
+    mainApi.reminders.delete(id),
 
   // Reminder listing
   getAll: (params?: {
@@ -639,24 +673,24 @@ export const reminderApi = {
     status?: string;
     limit?: number;
     offset?: number;
-  }) => apiRequest.get(apiEndpoints.reminders.base, params),
+  }) => mainApi.reminders.getAll(params),
 
   // Reminder execution
   execute: (id: string) =>
-    apiRequest.post(apiEndpoints.reminders.execute(id)),
+    mainApi.reminders.execute(id),
 
   pause: (id: string) =>
-    apiRequest.post(apiEndpoints.reminders.pause(id)),
+    mainApi.reminders.pause(id),
 
   resume: (id: string) =>
-    apiRequest.post(apiEndpoints.reminders.resume(id)),
+    mainApi.reminders.resume(id),
 
   // Reminder analytics
   getAnalytics: (id: string) =>
     apiRequest.get(apiEndpoints.reminders.analytics(id)),
 
   getStats: () =>
-    apiRequest.get(apiEndpoints.reminders.stats),
+    mainApi.reminders.getStats(),
 
   // Reminder templates
   getTemplates: () =>
@@ -901,21 +935,27 @@ export const configApi = {
 
 // Utility functions for handling API responses
 export const handleApiResponse = <T>(
-  response: ApiResponse<T>
+  response: ApiResponse<T> | any // Accept both old and new API response formats
 ): T => {
-  if (!response.success) {
-    const error = new Error(response.error?.message || 'API request failed');
-    (error as any).code = response.error?.code;
-    (error as any).details = response.error?.details;
-    (error as any).validation_errors = response.error?.validation_errors;
-    throw error;
+  // Handle new unified API client format
+  if (response && typeof response === 'object' && 'success' in response) {
+    if (!response.success) {
+      const error = new Error(response.error?.message || 'API request failed');
+      (error as any).code = response.error?.code;
+      (error as any).details = response.error?.details;
+      (error as any).validation_errors = response.error?.validation_errors;
+      throw error;
+    }
+
+    if (response.data === undefined || response.data === null) {
+      throw new Error('No data in API response');
+    }
+
+    return response.data;
   }
 
-  if (response.data === undefined || response.data === null) {
-    throw new Error('No data in API response');
-  }
-
-  return response.data;
+  // If it's not in the expected format, assume it's already the data
+  return response;
 };
 
 // Enhanced error handler with validation error support
@@ -943,7 +983,7 @@ export const handlePaginatedResponse = <T>(
 } => {
   const data = handleApiResponse(response);
   return {
-    data,
+    data: data as T[],
     hasMore: response.pagination.hasMore,
     nextToken: response.pagination.nextToken,
   };
@@ -960,7 +1000,7 @@ export const retryApiRequest = async <T>(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await requestFn();
-    } catch (error) {
+    } catch (error: any) {
       lastError = error;
 
       // Don't retry on authentication or validation errors
@@ -986,11 +1026,11 @@ export const uploadFile = async (
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await apiClient.post('/upload', formData, {
+  const response = await legacyApiClient.post(`${config.api.basePath}/upload`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    onUploadProgress: (progressEvent) => {
+    onUploadProgress: (progressEvent: any) => {
       if (progressEvent.total && onProgress) {
         const progress = Math.round(
           (progressEvent.loaded * 100) / progressEvent.total

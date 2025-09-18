@@ -1,0 +1,186 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fluxion-postgres-micro
+    environment:
+      POSTGRES_DB: fluxion_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_micro:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - fluxion-network
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: fluxion-redis-micro
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_micro:/data
+    networks:
+      - fluxion-network
+
+  # PgBouncer for connection pooling
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: fluxion-pgbouncer-micro
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: password
+      DATABASES_DBNAME: fluxion_dev
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      SERVER_LIFETIME: 3600
+      SERVER_IDLE_TIMEOUT: 600
+    ports:
+      - "6432:6432"
+    depends_on:
+      - postgres
+    networks:
+      - fluxion-network
+
+  # Shared library build service (for development)
+  shared-lib:
+    build:
+      context: ./packages/fluxion-shared-lib
+      dockerfile: Dockerfile
+    container_name: fluxion-shared-lib
+    volumes:
+      - ./packages/fluxion-shared-lib:/app
+      - /app/node_modules
+    command: npm run build:watch
+    networks:
+      - fluxion-network
+
+  # Admin Service
+  admin-service:
+    build:
+      context: ./services/admin-service
+      dockerfile: Dockerfile
+    container_name: fluxion-admin-service
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: fluxion_dev
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-secret-key
+      LOG_LEVEL: debug
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./services/admin-service:/app
+      - /app/node_modules
+      - ./packages/fluxion-shared-lib:/shared-lib
+    depends_on:
+      - postgres
+      - redis
+      - pgbouncer
+      - shared-lib
+    networks:
+      - fluxion-network
+    restart: unless-stopped
+
+  # Main Service
+  main-service:
+    build:
+      context: ./services/main-service
+      dockerfile: Dockerfile
+    container_name: fluxion-main-service
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: fluxion_dev
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: your-secret-key
+      LOG_LEVEL: debug
+      # Blockchain RPC URLs
+      ETHEREUM_RPC_URL: https://mainnet.infura.io/v3/YOUR_INFURA_KEY
+      POLYGON_RPC_URL: https://polygon-mainnet.infura.io/v3/YOUR_INFURA_KEY
+      ARBITRUM_RPC_URL: https://arbitrum-mainnet.infura.io/v3/YOUR_INFURA_KEY
+      BASE_RPC_URL: https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+      # Notification service
+      NOTIFICATION_QUEUE_URL: http://localhost:3002/notifications
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./services/main-service:/app
+      - /app/node_modules
+      - ./packages/fluxion-shared-lib:/shared-lib
+    depends_on:
+      - postgres
+      - redis
+      - pgbouncer
+      - shared-lib
+    networks:
+      - fluxion-network
+    restart: unless-stopped
+
+  # nginx reverse proxy for routing
+  nginx:
+    image: nginx:alpine
+    container_name: fluxion-nginx-micro
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.microservices.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - admin-service
+      - main-service
+    networks:
+      - fluxion-network
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: fluxion-pgadmin-micro
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@fluxion.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - fluxion-network
+    profiles:
+      - tools
+
+volumes:
+  postgres_data_micro:
+  redis_data_micro:
+
+networks:
+  fluxion-network:
+    driver: bridge
+
+# Health check services
+x-healthcheck: &healthcheck
+  test: ["CMD-SHELL", "curl -f http://localhost:$$PORT/health || exit 1"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s

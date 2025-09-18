@@ -4,6 +4,7 @@
  */
 
 import { ethers } from 'ethers';
+import { apiEndpoints } from './config';
 
 export interface WalletConnection {
   address: string;
@@ -63,7 +64,7 @@ export async function connectWallet(): Promise<WalletConnection> {
     console.log('🔄 Requesting wallet connection via ethers...');
     
     // Create ethers provider
-    const provider = new ethers.BrowserProvider(window.ethereum);
+    const provider = new ethers.BrowserProvider(window.ethereum!);
     
     // Request account access - this will open the wallet popup
     await provider.send('eth_requestAccounts', []);
@@ -131,7 +132,7 @@ export async function getWalletStatus(): Promise<WalletConnection | null> {
   }
 
   try {
-    const provider = new ethers.BrowserProvider(window.ethereum);
+    const provider = new ethers.BrowserProvider(window.ethereum!);
     
     // Check if already connected (without triggering popup)
     const accounts = await provider.listAccounts();
@@ -173,7 +174,7 @@ export async function connectAndAuth(authApiUrl: string): Promise<{
   
   // Step 2: Get auth message from backend
   console.log('🔄 Getting authentication message...');
-  const messageResponse = await fetch(`${authApiUrl}/users/auth/message`, {
+  const messageResponse = await fetch(`${authApiUrl}${apiEndpoints.auth.message}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ wallet_address: connection.address })
@@ -200,8 +201,3 @@ export async function connectAndAuth(authApiUrl: string): Promise<{
 }
 
 // Extend Window interface for TypeScript
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}

@@ -46,11 +46,13 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
   const [isTokenDropdownOpen, setIsTokenDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Build networks with their tokens
-  const networksWithTokens: NetworkWithTokens[] = networks.map(network => ({
+  // Build networks with their tokens  
+  const networksWithTokens = networks.map(network => ({
     ...network,
+    confirmationsRequired: (network as any).confirmationsRequired || 12, // Provide default if missing
     tokens: tokens.filter(token => token.networkId === network.id).map(token => ({
       ...token,
+      contractAddress: token.contractAddress || '', // Provide default for native tokens
       metadata: {
         logo: token.logoUrl,
       },
@@ -76,7 +78,7 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
   }, [networksWithTokens, selectedNetworkId, onNetworkChange, config.isLoaded]);
 
   useEffect(() => {
-    if (selectedNetwork?.tokens.length > 0 && !selectedTokenId) {
+    if (selectedNetwork?.tokens?.length && selectedNetwork.tokens.length > 0 && !selectedTokenId) {
       // Prefer stablecoins for default selection
       const stablecoin = selectedNetwork.tokens.find(t => t.isStablecoin);
       const defaultToken = stablecoin || selectedNetwork.tokens[0];
@@ -92,7 +94,7 @@ export const NetworkTokenSelector: React.FC<NetworkTokenSelectorProps> = ({
     const newNetwork = networksWithTokens.find(n => 
       n.chainId.toString() === networkId || n.id === networkId
     );
-    if (newNetwork?.tokens.length > 0) {
+    if (newNetwork?.tokens?.length && newNetwork.tokens.length > 0) {
       const stablecoin = newNetwork.tokens.find(t => t.isStablecoin);
       const defaultToken = stablecoin || newNetwork.tokens[0];
       onTokenChange(defaultToken.id);

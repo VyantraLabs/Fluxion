@@ -58,7 +58,7 @@ export class UsersService {
       const { getDatabase } = await import('@/shared/database/client');
       
       try {
-        const rbacService = new RBACService(getDatabase());
+        const rbacService = new RBACService();
         await rbacService.assignRole(
           user.id,
           'owner', // Organization owner role

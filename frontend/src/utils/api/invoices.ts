@@ -1,7 +1,8 @@
 import { Invoice, CreateInvoiceRequest, UpdateInvoiceRequest } from '@/types/invoice';
 import { authStorage } from '../storage';
+import { config, apiEndpoints } from '../config';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = config.api.mainService.baseUrl;
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -102,7 +103,7 @@ class InvoiceApiClient {
    * Create a new invoice
    */
   async createInvoice(data: CreateInvoiceRequest): Promise<Invoice> {
-    return this.request<Invoice>('/invoices', {
+    return this.request<Invoice>(apiEndpoints.invoices.base, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -112,14 +113,14 @@ class InvoiceApiClient {
    * Get invoice by ID
    */
   async getInvoice(id: string): Promise<Invoice> {
-    return this.request<Invoice>(`/invoices/${id}`);
+    return this.request<Invoice>(apiEndpoints.invoices.byId(id));
   }
 
   /**
    * Get public invoice (no auth required)
    */
   async getPublicInvoice(id: string): Promise<Invoice> {
-    return this.request<Invoice>(`/invoices/${id}/public`);
+    return this.request<Invoice>(apiEndpoints.invoices.public(id));
   }
 
   /**
@@ -137,7 +138,7 @@ class InvoiceApiClient {
     if (params?.nextToken) searchParams.append('nextToken', params.nextToken);
 
     const queryString = searchParams.toString();
-    const endpoint = `/invoices${queryString ? `?${queryString}` : ''}`;
+    const endpoint = `${apiEndpoints.invoices.base}${queryString ? `?${queryString}` : ''}`;
 
     return this.request<InvoiceListResponse>(endpoint);
   }
@@ -146,7 +147,7 @@ class InvoiceApiClient {
    * Update invoice status
    */
   async updateInvoiceStatus(id: string, status: 'sent' | 'cancelled'): Promise<Invoice> {
-    return this.request<Invoice>(`/invoices/${id}/status`, {
+    return this.request<Invoice>(`${apiEndpoints.invoices.byId(id)}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status }),
     });
@@ -156,7 +157,7 @@ class InvoiceApiClient {
    * Generate shareable link for invoice
    */
   async getShareableLink(id: string): Promise<{ shareUrl: string; expiresAt?: string }> {
-    return this.request<{ shareUrl: string; expiresAt?: string }>(`/invoices/${id}/share`);
+    return this.request<{ shareUrl: string; expiresAt?: string }>(`${apiEndpoints.invoices.byId(id)}/share`);
   }
 
   /**
@@ -166,21 +167,21 @@ class InvoiceApiClient {
     status: string;
     last_updated: string;
   }> {
-    return this.request(`/invoices/${id}/status`);
+    return this.request(`${apiEndpoints.invoices.byId(id)}/status`);
   }
 
   /**
    * Get dashboard statistics (authenticated - uses JWT context)
    */
   async getDashboardStats(): Promise<InvoiceStatsResponse> {
-    return this.request<InvoiceStatsResponse>('/invoices/stats');
+    return this.request<InvoiceStatsResponse>(apiEndpoints.invoices.stats);
   }
 
   /**
    * Create invoice from template
    */
   async createFromTemplate(templateId: string, data: CreateInvoiceRequest): Promise<Invoice> {
-    return this.request<Invoice>(`/templates/${templateId}/create-invoice`, {
+    return this.request<Invoice>(`${apiEndpoints.templates.byId(templateId)}/create-invoice`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -190,7 +191,7 @@ class InvoiceApiClient {
    * Send invoice via email
    */
   async send(invoiceId: string): Promise<{ sent: boolean; message: string }> {
-    return this.request<{ sent: boolean; message: string }>(`/invoices/${invoiceId}/send`, {
+    return this.request<{ sent: boolean; message: string }>(apiEndpoints.invoices.send(invoiceId), {
       method: 'POST',
     });
   }
@@ -199,7 +200,7 @@ class InvoiceApiClient {
    * Update invoice
    */
   async update(id: string, data: Partial<UpdateInvoiceRequest>): Promise<Invoice> {
-    return this.request<Invoice>(`/invoices/${id}`, {
+    return this.request<Invoice>(apiEndpoints.invoices.byId(id), {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -209,7 +210,7 @@ class InvoiceApiClient {
    * Delete invoice
    */
   async delete(id: string): Promise<{ deleted: boolean }> {
-    return this.request<{ deleted: boolean }>(`/invoices/${id}`, {
+    return this.request<{ deleted: boolean }>(apiEndpoints.invoices.byId(id), {
       method: 'DELETE',
     });
   }
@@ -218,9 +219,9 @@ class InvoiceApiClient {
    * Save invoice as draft
    */
   async saveDraft(data: Partial<CreateInvoiceRequest>): Promise<Invoice> {
-    return this.request<Invoice>('/invoices/draft', {
+    return this.request<Invoice>(apiEndpoints.invoices.base, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, status: 'draft' }),
     });
   }
 

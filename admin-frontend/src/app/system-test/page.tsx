@@ -77,9 +77,9 @@ export default function SystemTestPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Organization Roles</label>
                   <div className="mt-1">
-                    {user.organization_roles && user.organization_roles.length > 0 ? (
+                    {(user as any).organization_roles && (user as any).organization_roles.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {user.organization_roles.map((role, index) => (
+                        {(user as any).organization_roles.map((role: string, index: number) => (
                           <span key={index} className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                             {role}
                           </span>
@@ -97,7 +97,7 @@ export default function SystemTestPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">System Roles</label>
                 {systemRoles.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    {systemRoles.map((role) => (
+                    {systemRoles.map((role: string) => (
                       <span
                         key={role}
                         className={clsx(
@@ -123,7 +123,7 @@ export default function SystemTestPage() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {testRoles.map((role) => {
-              const hasRole = checkRole(role)
+              const hasRole = checkRole(role as any)
               return (
                 <div key={role} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">

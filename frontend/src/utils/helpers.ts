@@ -180,9 +180,9 @@ export const parseQueryString = (queryString: string): Record<string, string> =>
   const params = new URLSearchParams(queryString);
   const result: Record<string, string> = {};
   
-  for (const [key, value] of params) {
+  params.forEach((value, key) => {
     result[key] = value;
-  }
+  });
   
   return result;
 };
@@ -353,7 +353,7 @@ export const groupBy = <T>(array: T[], key: keyof T): Record<string, T[]> => {
 // Remove duplicates from array
 export const unique = <T>(array: T[], key?: keyof T): T[] => {
   if (!key) {
-    return [...new Set(array)];
+    return Array.from(new Set(array));
   }
   
   const seen = new Set();

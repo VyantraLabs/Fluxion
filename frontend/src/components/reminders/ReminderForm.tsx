@@ -146,7 +146,7 @@ export const ReminderForm: React.FC<ReminderFormProps> = ({
         response = await reminderApi.create(requestData);
       }
       
-      const savedReminder = handleApiResponse(response);
+      const savedReminder = handleApiResponse<any>(response);
       
       toast.success(
         reminder?.id 

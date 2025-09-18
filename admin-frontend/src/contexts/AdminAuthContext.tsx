@@ -146,7 +146,9 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
 
       // Step 1: Get message to sign from admin endpoint
       console.log('🔄 Admin Auth: Getting auth message...')
-      const messageResponse = await fetch('http://localhost:3000/admin/auth/message', {
+      const adminServiceUrl = process.env.NEXT_PUBLIC_ADMIN_SERVICE_URL || 'http://localhost:3001'
+      const adminBasePath = process.env.NEXT_PUBLIC_ADMIN_BASE_PATH || '/admin'
+      const messageResponse = await fetch(`${adminServiceUrl}${adminBasePath}/auth/message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -175,7 +177,7 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
 
       // Step 3: Verify signature with admin endpoint
       console.log('🔄 Admin Auth: Verifying signature...')
-      const verifyResponse = await fetch('http://localhost:3000/admin/auth/verify', {
+      const verifyResponse = await fetch(`${adminServiceUrl}${adminBasePath}/auth/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

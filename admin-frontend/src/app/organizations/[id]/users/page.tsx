@@ -298,7 +298,7 @@ export default function OrganizationUsersPage() {
       <AdminLayout
         title={`${organization?.name || 'Organization'} Users`}
         subtitle={`Manage users and roles for ${organization?.name || 'this organization'}`}
-        requiredPermission="organizations:read"
+        requiredPermissions={["organizations:read"]}
       >
         {/* Organization Header */}
         {organization && (

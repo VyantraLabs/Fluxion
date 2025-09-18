@@ -197,3 +197,61 @@ api-docs/
 test-*.js
 test-*.json
 test-*.html
+test-*.sh
+debug-*.html
+fix-*.sh
+
+# Development artifacts that should not be committed
+*.pid
+*.log
+*-fixed.log
+*-api.log
+*-admin.log
+server.log
+
+# Compiled TypeScript output (source files are tracked)
+**/*.js.map
+src/**/*.js
+
+# Documentation artifacts (consolidated docs are tracked)
+*-guide.md
+*-migration*.md
+*-implementation*.md
+*-architecture.md (unless it's the main ARCHITECTURE.md)
+*-summary.md
+*-refactor*.md
+*-vision*.md
+README-*.md
+
+# Backup and temporary files
+*.backup
+*.bak
+*.tmp
+config.ts.backup
+next.config.js.backup
+*.local.example
+
+# Service scripts and utilities
+start-services*.sh
+stop-services*.sh
+build-microservices.sh
+deploy-all-services.sh
+setup-microservices.sh
+update-*.sh
+
+# Nginx and infrastructure configs (unless production)
+nginx.*.conf
+*-configuration-schema.ts
+schema-additions.sql
+
+# Microservices development artifacts
+microservices-test.ts
+api-routing-test.ts
+debug-auth.ts
+mockWallet.ts
+
+# Frontend deployment configs (unless needed)
+netlify.toml
+wrangler.toml
+_redirects
+vercel.json

@@ -138,7 +138,7 @@ export default function OrganizationsPage() {
       <AdminLayout
         title="Organizations"
         subtitle="Manage organizations and view their statistics"
-        requiredPermission="organizations:read"
+        requiredPermissions={["organizations:read"]}
       >
       {/* Filters */}
       <div className="admin-card p-6 mb-6">

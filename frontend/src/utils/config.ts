@@ -1,9 +1,23 @@
 // Environment configuration
 export const config = {
-  // API Configuration
+  // API Configuration (Microservices)
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
-    version: process.env.NEXT_PUBLIC_API_VERSION || 'v1',
+    // Main service (user-facing APIs)
+    mainService: {
+      baseUrl: process.env.NEXT_PUBLIC_MAIN_SERVICE_URL || 'http://localhost:3000',
+      basePath: process.env.NEXT_PUBLIC_API_BASE_PATH || '/api',
+      timeout: 30000, // 30 seconds
+    },
+    // Admin service (admin-facing APIs)
+    adminService: {
+      baseUrl: process.env.NEXT_PUBLIC_ADMIN_SERVICE_URL || 'http://localhost:3001',
+      basePath: process.env.NEXT_PUBLIC_ADMIN_BASE_PATH || '/admin',
+      timeout: 30000, // 30 seconds
+    },
+    // Legacy support (fallback to main service)
+    baseUrl: process.env.NEXT_PUBLIC_MAIN_SERVICE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+    basePath: process.env.NEXT_PUBLIC_API_BASE_PATH || '/api',
+    version: process.env.NEXT_PUBLIC_API_VERSION || '',
     timeout: 30000, // 30 seconds
   },
   
@@ -171,89 +185,96 @@ export const isTestnet = (chainId: number): boolean => {
   return chainId === 80001; // Polygon Mumbai testnet
 };
 
-// API endpoints
-export const apiEndpoints = {
-  // Health
-  health: '/health',
-  metrics: '/metrics',
+// Create dynamic API endpoints using environment variables
+export const createApiEndpoints = () => {
+  const API_BASE_PATH = config.api.basePath;
   
-  // Authentication
-  auth: {
-    message: '/users/auth/message',
-    verify: '/users/auth/verify',
-    create: '/users/auth/create',
-  },
-  
-  // Users (Authentication endpoints - no auth required)
-  users: {
-    exists: (wallet: string) => `/users/exists/${wallet}`,
-    validateAddress: '/users/validate-address',
-    platformStats: '/users/platform/stats',
-  },
-  
-  // User (Authenticated endpoints - require auth, no wallet parameter)
-  user: {
-    profile: '/user/profile',
-    stats: '/user/stats',
-    completeOnboarding: '/users/onboarding/complete',
-  },
-  
-  // Invoices
-  invoices: {
-    base: '/invoices',
-    byId: (id: string) => `/invoices/${id}`,
-    public: (id: string) => `/invoices/${id}/public`,
-    send: (id: string) => `/invoices/${id}/send`,
-    stats: '/invoices/stats',
-  },
-  
-  // Payments
-  payments: {
-    verify: '/payments/verify',
-    byId: (id: string) => `/payments/${id}`,
-    byTxHash: (hash: string) => `/payments/tx/${hash}`,
-  },
-  
-  // Analytics
-  analytics: {
-    platform: '/analytics/platform',
-  },
+  return {
+    // Health (no prefix - root level)
+    health: '/health',
+    metrics: '/metrics',
+    
+    // Authentication (main service with configurable prefix)
+    auth: {
+      message: `${API_BASE_PATH}/users/auth/message`,
+      verify: `${API_BASE_PATH}/users/auth/verify`,
+      create: `${API_BASE_PATH}/users/auth/create`,
+    },
+    
+    // Users (Authentication endpoints - no auth required, main service)
+    users: {
+      exists: (wallet: string) => `${API_BASE_PATH}/users/exists/${wallet}`,
+      validateAddress: `${API_BASE_PATH}/users/validate-address`,
+      platformStats: `${API_BASE_PATH}/users/platform/stats`,
+    },
+    
+    // User (Authenticated endpoints - require auth, main service)
+    user: {
+      profile: `${API_BASE_PATH}/user/profile`,
+      stats: `${API_BASE_PATH}/user/stats`,
+      completeOnboarding: `${API_BASE_PATH}/users/onboarding/complete`,
+    },
+    
+    // Invoices (main service)
+    invoices: {
+      base: `${API_BASE_PATH}/invoices`,
+      byId: (id: string) => `${API_BASE_PATH}/invoices/${id}`,
+      public: (id: string) => `${API_BASE_PATH}/invoices/${id}/public`,
+      send: (id: string) => `${API_BASE_PATH}/invoices/${id}/send`,
+      stats: `${API_BASE_PATH}/invoices/stats`,
+    },
+    
+    // Payments (main service)
+    payments: {
+      verify: `${API_BASE_PATH}/payments/verify`,
+      byId: (id: string) => `${API_BASE_PATH}/payments/${id}`,
+      byTxHash: (hash: string) => `${API_BASE_PATH}/payments/tx/${hash}`,
+    },
+    
+    // Analytics (main service)
+    analytics: {
+      platform: `${API_BASE_PATH}/analytics/platform`,
+    },
 
-  // Configuration
-  config: {
-    networks: '/config/networks',
-    networkByChainId: (chainId: number) => `/config/networks/${chainId}`,
-    tokens: '/config/tokens',
-    tokensByChainId: (chainId: number) => `/config/tokens/${chainId}`,
-    appConfig: '/config/app-config',
-    health: '/config/health',
-    validateNetwork: (chainId: number) => `/config/validate/network/${chainId}`,
-  },
+    // Configuration (main service)
+    config: {
+      networks: `${API_BASE_PATH}/config/networks`,
+      networkByChainId: (chainId: number) => `${API_BASE_PATH}/config/networks/${chainId}`,
+      tokens: `${API_BASE_PATH}/config/tokens`,
+      tokensByChainId: (chainId: number) => `${API_BASE_PATH}/config/tokens/${chainId}`,
+      appConfig: `${API_BASE_PATH}/config/app-config`,
+      health: `${API_BASE_PATH}/config/health`,
+      validateNetwork: (chainId: number) => `${API_BASE_PATH}/config/validate/network/${chainId}`,
+    },
 
-  // Templates
-  templates: {
-    base: '/templates',
-    byId: (id: string) => `/templates/${id}`,
-    categories: '/templates/categories',
-    analytics: (id: string) => `/templates/${id}/analytics`,
-    incrementUsage: (id: string) => `/templates/${id}/use`,
-  },
+    // Templates (main service)
+    templates: {
+      base: `${API_BASE_PATH}/templates`,
+      byId: (id: string) => `${API_BASE_PATH}/templates/${id}`,
+      categories: `${API_BASE_PATH}/templates/categories`,
+      analytics: (id: string) => `${API_BASE_PATH}/templates/${id}/analytics`,
+      incrementUsage: (id: string) => `${API_BASE_PATH}/templates/${id}/use`,
+    },
 
-  // Reminders
-  reminders: {
-    base: '/reminders',
-    byId: (id: string) => `/reminders/${id}`,
-    execute: (id: string) => `/reminders/${id}/execute`,
-    pause: (id: string) => `/reminders/${id}/pause`,
-    resume: (id: string) => `/reminders/${id}/resume`,
-    analytics: (id: string) => `/reminders/${id}/analytics`,
-    stats: '/reminders/stats',
-    templates: '/reminders/templates',
-    byInvoice: (invoiceId: string) => `/reminders/invoice/${invoiceId}`,
-    setupForInvoice: (invoiceId: string) => `/reminders/invoice/${invoiceId}/setup`,
-    bulkCreate: '/reminders/bulk/create',
-  },
-} as const;
+    // Reminders (main service)
+    reminders: {
+      base: `${API_BASE_PATH}/reminders`,
+      byId: (id: string) => `${API_BASE_PATH}/reminders/${id}`,
+      execute: (id: string) => `${API_BASE_PATH}/reminders/${id}/execute`,
+      pause: (id: string) => `${API_BASE_PATH}/reminders/${id}/pause`,
+      resume: (id: string) => `${API_BASE_PATH}/reminders/${id}/resume`,
+      analytics: (id: string) => `${API_BASE_PATH}/reminders/${id}/analytics`,
+      stats: `${API_BASE_PATH}/reminders/stats`,
+      templates: `${API_BASE_PATH}/reminders/templates`,
+      byInvoice: (invoiceId: string) => `${API_BASE_PATH}/reminders/invoice/${invoiceId}`,
+      setupForInvoice: (invoiceId: string) => `${API_BASE_PATH}/reminders/invoice/${invoiceId}/setup`,
+      bulkCreate: `${API_BASE_PATH}/reminders/bulk/create`,
+    },
+  } as const;
+};
+
+// Create the apiEndpoints with current configuration
+export const apiEndpoints = createApiEndpoints();
 
 // Validation
 export const validateConfig = () => {

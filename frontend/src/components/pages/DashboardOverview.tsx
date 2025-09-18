@@ -21,7 +21,7 @@ import { Invoice } from '@/types/invoice';
 import { OnboardingOverlay } from '@/components/common/OnboardingOverlay';
 
 export const DashboardOverview: React.FC = () => {
-  const { user, isAuthenticated, isOnboarding } = useWalletAuth();
+  const { user, isAuthenticated } = useWalletAuth();
   const [stats, setStats] = useState<InvoiceStatsResponse | null>(null);
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
@@ -83,7 +83,7 @@ export const DashboardOverview: React.FC = () => {
     <>
       {/* Onboarding Overlay */}
       <OnboardingOverlay 
-        isVisible={isOnboarding}
+        isVisible={false}
         currentStep="welcome"
         userName={user?.display_name}
       />
@@ -271,10 +271,10 @@ export const DashboardOverview: React.FC = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-secondary-900 truncate">
-                              {invoice.client_name}
+                              {invoice.clientName}
                             </p>
                             <p className="text-sm text-secondary-500">
-                              Due {formatDate(invoice.due_date)}
+                              {invoice.dueDate ? `Due ${formatDate(invoice.dueDate)}` : 'No due date'}
                             </p>
                           </div>
                           <div className="text-right">

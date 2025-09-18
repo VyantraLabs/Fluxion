@@ -1,13 +1,12 @@
 # Fluxion Platform Architecture
 
-**Version**: 2.0.0 Production  
-**Last Updated**: September 5, 2025  
-**Status**: Production-Ready System - 100% Complete
-**Architecture**: Serverless Multi-Service with Enterprise Features
+**Version**: 3.0.0 - Consolidated Architecture  
+**Last Updated**: September 18, 2025  
+**Status**: Production-Ready Web3 Payment Platform
 
 ## 🏗️ System Overview
 
-Fluxion is a production-ready Web3 payment platform built with a modern, scalable serverless architecture. The system handles crypto-native invoicing, payment processing, and automated notifications with enterprise-grade security and multi-tenant isolation.
+Fluxion is a production-ready Web3 payment platform for crypto-native invoicing and payroll. Built with a modern, scalable serverless architecture, it handles multi-blockchain payments, automated notifications, and enterprise-grade multi-tenant operations.
 
 ### High-Level Architecture
 
@@ -63,7 +62,7 @@ Fluxion is a production-ready Web3 payment platform built with a modern, scalabl
 
 The system uses PostgreSQL with row-level security (RLS) for tenant isolation. Each organization has isolated data through `organization_id` foreign keys.
 
-#### Core Entities (12 Tables)
+#### Core Entities (20+ Tables)
 
 ```sql
 -- Core business entities
@@ -71,7 +70,8 @@ organizations (tenant root)
 ├── users (wallet-based accounts)
 ├── invoices (invoice lifecycle)
 ├── payments (payment tracking)
-├── invoice_templates (reusable templates)
+├── templates (reusable templates)
+├── template_categories (template organization)
 └── audit_logs (activity tracking)
 
 -- Configuration entities  
@@ -83,6 +83,22 @@ invoice_access_tokens (secure client access)
 notification_queue (email processing)
 notification_settings (user preferences)
 payment_verification_jobs (background processing)
+reminder_jobs (automated reminders)
+
+-- RBAC System
+roles (role definitions)
+permissions (permission catalog)
+role_permissions (role-permission mapping)
+user_roles (user-role assignments)
+
+-- Payroll System
+payroll_batches (batch payment processing)
+payroll_recipients (recipient management)
+
+-- System Configuration
+system_settings (global configuration)
+organization_settings (tenant-specific settings)
+smart_contracts (contract management)
 ```
 
 #### Key Design Patterns
@@ -100,6 +116,7 @@ CREATE POLICY invoice_isolation_policy ON invoices
 CREATE INDEX idx_invoices_org_status ON invoices(organization_id, status);
 CREATE INDEX idx_payments_invoice_status ON payments(invoice_id, status);
 CREATE INDEX idx_tokens_network_active ON tokens(network_id, is_active);
+CREATE INDEX idx_audit_logs_org_timestamp ON audit_logs(organization_id, created_at);
 ```
 
 **JSONB for Flexibility**
@@ -107,12 +124,13 @@ CREATE INDEX idx_tokens_network_active ON tokens(network_id, is_active);
 - Notification template data
 - Organization preferences
 - Job processing results
+- Template rendering data
 
 ## 🔄 API Architecture
 
 ### **RESTful API Design**
 
-The main Lambda function serves a comprehensive REST API with 30+ endpoints organized into logical modules:
+The main Lambda function serves a comprehensive REST API with 50+ endpoints organized into logical modules:
 
 #### Authentication Module
 - `POST /users/auth/message` - Get challenge message
@@ -124,6 +142,7 @@ The main Lambda function serves a comprehensive REST API with 30+ endpoints orga
 - `GET/PUT/DELETE /invoices/:id` - Invoice CRUD
 - `POST /invoices/:id/send` - Send to client
 - `GET /public/invoice/:token` - Public client access
+- `POST /invoices/:id/pay` - Submit payment
 
 #### Payment Processing Module  
 - `POST /invoices/:id/pay` - Submit payment
@@ -132,12 +151,54 @@ The main Lambda function serves a comprehensive REST API with 30+ endpoints orga
 
 #### Template Management Module
 - `GET/POST /templates` - Template management
+- `GET/POST /templates/categories` - Category management
 - `POST /invoices/from-template/:id` - Create from template
+
+#### Organization Module
+- `GET/POST /organizations` - Organization CRUD
+- `GET /organizations/:id/activity` - Activity logs
+- `GET /organizations/:id/users` - Team management
+
+#### Admin Module
+- `GET/POST /admin/users` - User management
+- `GET/POST /admin/organizations` - Organization management
+- `GET /admin/system/stats` - System statistics
 
 #### Configuration Module
 - `GET /config` - Complete app configuration
 - `GET /networks` - Blockchain networks
 - `GET /tokens` - Available tokens
+
+### **Microservices Architecture (Optional)**
+
+The system supports both monolithic and microservices deployment:
+
+```
+fluxion/
+├── services/
+│   ├── main-service/          # User-facing APIs (Port 3000)
+│   │   ├── routes/           # Core business logic endpoints
+│   │   ├── config/           # Service configuration
+│   │   └── local.ts          # Local development server
+│   │
+│   └── admin-service/        # Admin APIs (Port 3001)
+│       ├── routes/           # Admin-only endpoints
+│       ├── config/           # Service configuration
+│       └── local.ts          # Local development server
+│
+├── packages/
+│   └── fluxion-shared/       # Shared library
+│       ├── config/           # Common configuration
+│       ├── types/            # TypeScript interfaces
+│       ├── utils/            # Utility functions
+│       ├── validation/       # Zod schemas
+│       └── swagger/          # API documentation
+│
+└── frontend/
+    └── lib/
+        ├── api-client.ts     # Unified API client
+        └── api-services.ts   # Service-specific methods
+```
 
 ### **Response Format Standardization**
 
@@ -176,9 +237,35 @@ The main Lambda function serves a comprehensive REST API with 30+ endpoints orga
 - **Web3 Authentication**: Cryptographic wallet signature verification
 - **JWT Tokens**: Secure session management with organization context
 - **Multi-Tenant Isolation**: Database-level tenant separation with RLS
-- **Role-Based Access**: Granular permissions per organization
+- **RBAC System**: Role-based access control with granular permissions
 
-#### 2. Client Access Security
+#### 2. RBAC Implementation
+```typescript
+// Role hierarchy
+interface Role {
+  id: string;
+  name: string;
+  permissions: Permission[];
+  organizationId?: string; // null for system roles
+}
+
+// Permission structure
+interface Permission {
+  resource: string; // 'invoices', 'users', 'organizations'
+  action: string;   // 'create', 'read', 'update', 'delete'
+  scope: 'own' | 'organization' | 'system';
+}
+
+// System roles
+const systemRoles = [
+  'super_admin',    // Full system access
+  'system_admin',   // System management
+  'organization_admin', // Organization management
+  'user'           // Basic user access
+];
+```
+
+#### 3. Client Access Security
 ```typescript
 // Secure client access tokens
 {
@@ -190,13 +277,13 @@ The main Lambda function serves a comprehensive REST API with 30+ endpoints orga
 }
 ```
 
-#### 3. API Security Patterns
+#### 4. API Security Patterns
 - **Rate Limiting**: Tiered limits by endpoint and user type
 - **Input Validation**: Comprehensive Zod schema validation
 - **CSRF Protection**: Token-based protection for state changes
 - **SQL Injection Prevention**: TypeORM query builder protection
 
-#### 4. Infrastructure Security
+#### 5. Infrastructure Security
 - **VPC Isolation**: Private subnets for database and cache
 - **Security Groups**: Strict firewall rules
 - **Secrets Management**: AWS Parameter Store with encryption
@@ -291,11 +378,6 @@ class CacheStrategy {
 }
 ```
 
-#### Cache Warming Strategy
-- **Startup Cache**: Pre-load essential configuration data
-- **Predictive Caching**: Cache based on usage patterns
-- **Background Refresh**: Asynchronous cache updates
-
 ## 🔄 Background Job Architecture
 
 ### **SQS-Based Job Processing**
@@ -325,7 +407,7 @@ interface PaymentVerificationJob {
 **2. Email Notification Jobs**
 ```typescript
 interface EmailNotificationJob {
-  type: 'invoice_sent' | 'payment_received' | 'reminder';
+  type: 'invoice_sent' | 'payment_received' | 'reminder' | 'overdue';
   recipientEmail: string;
   templateData: Record<string, any>;
   scheduledFor: Date;
@@ -340,11 +422,16 @@ interface EmailNotificationJob {
 5. Log delivery metrics
 ```
 
-**3. Scheduled Maintenance Jobs**
-- Overdue invoice status updates
-- Expired access token cleanup  
-- Payment confirmation monitoring
-- Reminder escalation processing
+**3. Reminder Jobs**
+```typescript
+interface ReminderJob {
+  invoiceId: string;
+  reminderType: 'pre_due' | 'overdue' | 'final_notice';
+  scheduledFor: Date;
+  recipientEmail: string;
+  retryCount: number;
+}
+```
 
 #### Error Handling & Retry Logic
 ```typescript
@@ -403,28 +490,37 @@ class EmailService {
 ```
 
 #### Template System
-- **7 Professional Templates**: Invoice sent, payment received, reminders, overdue alerts
+- **Professional Templates**: 7+ responsive email templates
 - **Handlebars + MJML**: Dynamic content with responsive design
 - **Multi-language Support**: Template localization ready
 - **Custom Branding**: Organization logos and color schemes
 
-#### Automated Reminder System
+#### Template Categories
 ```typescript
-class ReminderScheduler {
-  scheduleInvoiceReminders(invoiceId: string): void {
-    const reminderIntervals = [7, 3, 1]; // Days before due
-    const overdueIntervals = [1, 7, 14];  // Days after due
-    
-    // Schedule pre-due reminders
-    reminderIntervals.forEach(days => {
-      this.scheduleNotification({
-        type: 'reminder',
-        invoiceId,
-        scheduledFor: dueDate.subtract(days, 'days')
-      });
-    });
-  }
-}
+const templateCategories = {
+  invoices: [
+    'professional-business',
+    'modern-minimalist', 
+    'creative-agency',
+    'tech-startup',
+    'consulting-services'
+  ],
+  contracts: [
+    'freelance-contract',
+    'service-agreement'
+  ],
+  estimates: [
+    'detailed-project',
+    'quick-service-quote'
+  ],
+  payslips: [
+    'monthly-salary'
+  ],
+  receipts: [
+    'crypto-payment',
+    'service-payment'
+  ]
+};
 ```
 
 ## 🌐 Blockchain Integration
@@ -543,7 +639,7 @@ interface LogContext {
 
 // Example log entry
 {
-  "timestamp": "2025-09-05T10:00:00.000Z",
+  "timestamp": "2025-09-18T10:00:00.000Z",
   "level": "info",
   "context": "InvoiceService",
   "message": "Invoice created successfully",
@@ -564,11 +660,14 @@ main-lambda/src/
 │   ├── invoices/              # Invoice management
 │   │   ├── handlers.ts        # Express route handlers
 │   │   ├── service.ts         # Business logic
-│   │   ├── validation.ts      # Request validation
 │   │   └── types.ts           # TypeScript types
 │   ├── payments/              # Payment processing
 │   ├── users/                 # User management
 │   ├── templates/             # Template management
+│   ├── organizations/         # Organization management
+│   ├── admin/                 # Admin functionality
+│   ├── dashboard/             # Analytics and stats
+│   ├── reminders/             # Reminder system
 │   └── notifications/         # Notification handling
 ├── database/                  # Data layer
 │   ├── entities/              # TypeORM entities
@@ -580,6 +679,8 @@ main-lambda/src/
 │   ├── services/              # Shared services
 │   ├── validation/            # Zod schemas
 │   ├── errors/                # Custom error classes
+│   ├── blockchain/            # Blockchain integration
+│   ├── cache/                 # Redis caching
 │   └── utils/                 # Utility functions
 └── config/                    # Configuration
     ├── database.ts            # Database config
@@ -587,35 +688,32 @@ main-lambda/src/
     └── environment.ts         # Environment variables
 ```
 
-### **Testing Strategy**
+### **Multi-Organization Dashboard System**
 
-#### Test Coverage Requirements
-- **Unit Tests**: >80% coverage for services and utilities
-- **Integration Tests**: API endpoint testing with test database
-- **Database Tests**: Repository and migration testing
-- **End-to-End Tests**: Critical user workflows
-
-#### Test Organization
+#### Organization Context Navigation
 ```typescript
-// Service testing pattern
-describe('InvoiceService', () => {
-  beforeEach(async () => {
-    await setupTestDatabase();
-    await seedTestData();
-  });
-  
-  afterEach(async () => {
-    await cleanupTestDatabase();
-  });
-  
-  describe('createInvoice', () => {
-    it('should create invoice with valid data', async () => {
-      const result = await invoiceService.createInvoice(validInvoiceData);
-      expect(result.success).toBe(true);
-      expect(result.data.id).toBeDefined();
-    });
-  });
-});
+// Organization selection and context management
+interface OrganizationContext {
+  currentOrganization?: Organization;
+  availableOrganizations: Organization[];
+  switchOrganization: (orgId: string) => Promise<void>;
+  exitOrganization: () => void;
+}
+
+// Dashboard structure
+const organizationDashboard = {
+  overview: {
+    stats: ['total_invoices', 'pending_payments', 'revenue'],
+    charts: ['payment_trends', 'invoice_status_distribution'],
+    recentActivity: 'audit_logs'
+  },
+  tabs: {
+    invoices: 'invoice_management',
+    team: 'user_role_management',
+    activity: 'audit_logs',
+    templates: 'template_gallery'
+  }
+};
 ```
 
 ## 🚀 Deployment Architecture
@@ -670,6 +768,29 @@ const deploymentConfig = {
 };
 ```
 
+#### Cost Optimization (Free Tier Strategy)
+```typescript
+// Free tier resource allocation
+const freetierLimits = {
+  lambda: {
+    invocations: 1000000, // 1M per month
+    allocation: {
+      mainApi: 0.4,      // 400K invocations
+      notifications: 0.3, // 300K invocations
+      backgroundJobs: 0.3 // 300K invocations
+    }
+  },
+  apiGateway: {
+    requests: 1000000,   // 1M per month
+    distribution: {
+      production: 0.7,   // 700K requests
+      staging: 0.2,      // 200K requests
+      development: 0.1   // 100K requests
+    }
+  }
+};
+```
+
 ## 📈 Performance Optimization
 
 ### **Database Performance**
@@ -692,7 +813,7 @@ const deploymentConfig = {
 
 ---
 
-## 🎯 Production Readiness Checklist
+## 🎯 Production Readiness Status
 
 ### ✅ **Infrastructure**
 - [x] Multi-environment deployment configuration
@@ -706,7 +827,9 @@ const deploymentConfig = {
 - [x] Multi-chain payment processing
 - [x] Professional notification system
 - [x] Background job processing
-- [x] Client portal with secure access
+- [x] Multi-organization dashboard system
+- [x] RBAC permission system
+- [x] Template management system
 
 ### ✅ **Quality Assurance**
 - [x] >80% test coverage across all services
@@ -719,4 +842,4 @@ const deploymentConfig = {
 
 **This architecture document represents the complete production-ready Fluxion platform, designed to scale from startup to enterprise while maintaining security, performance, and reliability.**
 
-*Last Updated: September 5, 2025*
+*Architecture Documentation - September 2025*

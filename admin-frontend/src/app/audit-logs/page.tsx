@@ -299,7 +299,7 @@ export default function AuditLogsPage() {
       <AdminLayout
         title="Audit Logs"
         subtitle="Monitor system activity and security events across the platform"
-        requiredPermission="audit_logs:read"
+        requiredPermissions={["audit:read"]}
       >
       {/* Controls */}
       <div className="admin-card p-6 mb-6">

@@ -322,7 +322,7 @@ export const UserDetailsModal: React.FC<UserDetailsModalProps> = ({
       {/* Role Manager Modal */}
       <UserRoleManager
         user={user}
-        organization={currentOrg}
+        organization={currentOrg || undefined}
         isOpen={showRoleManager}
         onClose={() => setShowRoleManager(false)}
       />

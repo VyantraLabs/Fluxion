@@ -318,7 +318,7 @@ export default function ActivityPage() {
       <AdminLayout
         title="Activity Logs"
         subtitle="Monitor system activity and security events across the platform"
-        requiredPermission="activity_logs:read"
+        requiredPermissions={["activity_logs:read"]}
       >
       {/* Controls */}
       <div className="admin-card p-6 mb-6">

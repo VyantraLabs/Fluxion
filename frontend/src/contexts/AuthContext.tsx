@@ -16,6 +16,7 @@ import { WalletAddress } from '@/types/web3';
 import { authApi, userApi, handleApiResponse, handleApiError } from '@/utils/api';
 import { authStorage, userStorage } from '@/utils/storage';
 import { useWeb3 } from './Web3Context';
+import { config } from '@/utils/config';
 import toast from 'react-hot-toast';
 
 // Initial state
@@ -104,35 +105,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [web3.wallet?.address, state.isAuthenticated]);
 
   const initializeAuth = async () => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    
     try {
+      console.debug('🔄 Initializing authentication from storage...');
+      
       const token = authStorage.getToken();
       const cachedUser = userStorage.getProfile();
+      const rawToken = localStorage.getItem('fluxion_auth_token');
+      const rawProfile = localStorage.getItem('fluxion_user_profile');
+
+      console.debug('🔍 Storage check results:', {
+        tokenExists: !!token,
+        profileExists: !!cachedUser,
+        rawTokenExists: !!rawToken,
+        rawProfileExists: !!rawProfile,
+        tokenLength: token?.length || 0,
+        userId: cachedUser?.id || 'none'
+      });
 
       if (token && cachedUser) {
+        console.debug('📁 Found cached authentication data, validating with server...');
+        
         try {
-          // Validate token by making an API call
-          await userApi.getProfile();
-          dispatch({ type: 'SET_USER', payload: cachedUser });
-          console.debug('Authentication initialized with cached user:', cachedUser.wallet_address);
-        } catch (error) {
-          // Token is invalid, clear storage
-          console.debug('Cached token invalid, clearing storage');
+          // Validate token by making an authenticated API call
+          const profileResponse = await userApi.getProfile();
+          const serverUser = handleApiResponse(profileResponse);
+          
+          console.debug('✅ Server validation successful:', {
+            cachedUserId: cachedUser.id,
+            serverUserId: serverUser.id,
+            idsMatch: cachedUser.id === serverUser.id
+          });
+          
+          // Use server data as source of truth, update cache if needed
+          if (JSON.stringify(cachedUser) !== JSON.stringify(serverUser)) {
+            console.debug('🔄 Updating cached user profile with server data');
+            userStorage.setProfile(serverUser);
+          }
+          
+          // Set authenticated state
+          dispatch({ type: 'SET_USER', payload: serverUser });
+          dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+          
+          console.debug('🎉 Authentication initialized successfully from cache');
+          
+        } catch (error: any) {
+          // Token is invalid or expired, clear storage
+          console.debug('❌ Cached token invalid, clearing storage:', {
+            error: error.message,
+            status: error.status
+          });
+          
           authStorage.removeToken();
           userStorage.removeProfile();
+          
+          dispatch({ type: 'SET_AUTHENTICATED', payload: false });
+          dispatch({ type: 'SET_USER', payload: null });
         }
       } else {
-        console.debug('No cached authentication found');
+        console.debug('📭 No cached authentication found or incomplete data');
+        dispatch({ type: 'SET_AUTHENTICATED', payload: false });
+        dispatch({ type: 'SET_USER', payload: null });
       }
     } catch (error) {
-      console.error('Error initializing authentication:', error);
+      console.error('❌ Error initializing authentication:', error);
       // Clear any corrupted storage
       authStorage.removeToken();
       userStorage.removeProfile();
+      dispatch({ type: 'SET_AUTHENTICATED', payload: false });
+      dispatch({ type: 'SET_USER', payload: null });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   const login = async (
-    walletAddress: WalletAddress,
+    walletAddress: string,
     signature: string,
     message: string
   ): Promise<void> => {
@@ -141,45 +190,100 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       // Try to authenticate existing user first
-      console.debug('Attempting to authenticate existing user');
+      console.debug('🔄 Starting authentication process for wallet:', walletAddress);
+      console.debug('🔄 Making API call to verifySignature...');
+      
       const response = await authApi.verifySignature(walletAddress, signature, message);
-      const { token, user, expires_at, needsOnboarding, organization }: AuthResponse = handleApiResponse(response);
+      console.debug('🔍 Raw API response received:', response);
+      
+      const apiData = handleApiResponse(response);
+      console.debug('🔍 Processed API data:', apiData);
+      
+      const { token, user, expires_at, needsOnboarding, organization }: AuthResponse = apiData;
+
+      if (!token) {
+        throw new Error('No authentication token received from server');
+      }
+
+      if (!user) {
+        throw new Error('No user data received from server');
+      }
 
       // Calculate expiration time in milliseconds
       const expiresAt = new Date(expires_at).getTime();
       const expiresInMs = expiresAt - Date.now();
 
-      // Store authentication data with enhanced debugging
-      console.debug('🔄 Storing authentication token:', {
-        tokenLength: token?.length,
+      console.debug('🔐 Authentication successful, storing credentials:', {
+        userId: user.id,
+        walletAddress: user.wallet_address,
+        tokenLength: token.length,
         expiresInMs,
-        tokenPreview: token?.substring(0, 30) + '...'
+        expiresAt: new Date(expiresAt).toISOString()
       });
+
+      // Clear any existing auth data first
+      authStorage.removeToken();
+      userStorage.removeProfile();
       
-      // Store token and verify immediately
+      // Store new authentication data
       const tokenStored = authStorage.setToken(token, expiresInMs);
       const profileStored = userStorage.setProfile(user);
       
-      console.debug('✅ Token storage result:', tokenStored, 'Profile storage result:', profileStored);
-      
-      // Immediate verification of token storage
-      const verifyToken = authStorage.getToken();
-      const verifyProfile = userStorage.getProfile();
-      console.debug('🔍 Immediate verification:', {
-        tokenRetrieved: !!verifyToken,
-        tokenMatch: verifyToken === token,
-        profileRetrieved: !!verifyProfile,
-        profileMatch: verifyProfile?.id === user.id,
-        rawLocalStorageToken: localStorage.getItem('fluxion_auth_token') ? 'exists' : 'missing'
+      console.debug('💾 Storage operations completed:', {
+        tokenStored,
+        profileStored
       });
+
+      // Critical: Immediate verification with detailed logging
+      console.debug('🔍 Starting post-storage verification...');
       
+      const verifyToken = authStorage.getToken();
+      console.debug('🔍 authStorage.getToken() returned:', verifyToken);
+      
+      const verifyProfile = userStorage.getProfile();
+      console.debug('🔍 userStorage.getProfile() returned:', verifyProfile);
+      
+      const rawTokenCheck = localStorage.getItem('fluxion_auth_token');
+      console.debug('🔍 Raw localStorage fluxion_auth_token:', rawTokenCheck);
+      
+      const rawProfileCheck = localStorage.getItem('fluxion_user_profile');
+      console.debug('🔍 Raw localStorage fluxion_user_profile:', rawProfileCheck);
+      
+      console.debug('🔍 Post-storage verification:', {
+        tokenRetrieved: !!verifyToken,
+        tokenMatches: verifyToken === token,
+        profileRetrieved: !!verifyProfile,
+        profileMatches: verifyProfile?.id === user.id,
+        rawTokenExists: !!rawTokenCheck,
+        rawProfileExists: !!rawProfileCheck,
+        rawTokenSample: rawTokenCheck?.substring(0, 50) + '...',
+        authStorageWorking: typeof authStorage.getToken === 'function'
+      });
+
+      // Throw error if token storage verification fails
       if (!verifyToken) {
-        console.error('❌ CRITICAL: Token was not stored properly!');
-        throw new Error('Authentication token storage failed');
+        console.error('❌ CRITICAL ERROR: Token storage failed verification!', {
+          tokenStorageAttempt: tokenStored,
+          rawStorageExists: !!rawTokenCheck,
+          storageFunctionType: typeof authStorage.setToken,
+          retrievalFunctionType: typeof authStorage.getToken
+        });
+        throw new Error('Authentication token storage verification failed');
       }
 
-      // Set user state
+      if (!verifyProfile) {
+        console.error('❌ CRITICAL ERROR: Profile storage failed verification!', {
+          profileStorageAttempt: profileStored,
+          rawProfileExists: !!rawProfileCheck
+        });
+        throw new Error('User profile storage verification failed');
+      }
+
+      console.debug('✅ Authentication storage verified successfully');
+
+      // Set user state AFTER successful storage verification
       dispatch({ type: 'SET_USER', payload: user });
+      dispatch({ type: 'SET_AUTHENTICATED', payload: true });
 
       // Handle onboarding state for existing users
       if (needsOnboarding) {
@@ -190,6 +294,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         dispatch({ type: 'SET_NEEDS_ONBOARDING', payload: false });
         toast.success('Welcome back!');
       }
+
+      console.debug('🎉 Authentication process completed successfully');
       
     } catch (error: any) {
       console.error('Authentication error:', error);
@@ -203,7 +309,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Store signature data for onboarding completion
         (window as any).__onboardingData = { walletAddress, signature, message };
         
-        toast.info('Welcome to Fluxion! Please complete your profile setup to get started.');
+        toast.success('Welcome to Fluxion! Please complete your profile setup to get started.');
         return; // Don't throw error, let onboarding handle it
       }
 
@@ -303,7 +409,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const checkUserExists = async (walletAddress: WalletAddress): Promise<UserExistsResponse> => {
+  const checkUserExists = async (walletAddress: string): Promise<UserExistsResponse> => {
     try {
       const response = await userApi.exists(walletAddress);
       return handleApiResponse(response);
@@ -363,33 +469,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const expiresAt = new Date(expires_at).getTime();
       const expiresInMs = expiresAt - Date.now();
 
-      // Store authentication data with enhanced debugging
-      console.debug('🔄 Storing authentication token:', {
-        tokenLength: token?.length,
+      console.debug('🔐 New user authentication successful, storing credentials:', {
+        userId: user.id,
+        walletAddress: user.wallet_address,
+        tokenLength: token.length,
         expiresInMs,
-        tokenPreview: token?.substring(0, 30) + '...'
+        expiresAt: new Date(expiresAt).toISOString()
       });
+
+      // Clear any existing auth data first
+      authStorage.removeToken();
+      userStorage.removeProfile();
       
-      // Store token and verify immediately
+      // Store new authentication data
       const tokenStored = authStorage.setToken(token, expiresInMs);
       const profileStored = userStorage.setProfile(user);
       
-      console.debug('✅ Token storage result:', tokenStored, 'Profile storage result:', profileStored);
-      
-      // Immediate verification of token storage
+      console.debug('💾 Storage operations completed:', {
+        tokenStored,
+        profileStored
+      });
+
+      // Critical: Immediate verification with detailed logging
       const verifyToken = authStorage.getToken();
       const verifyProfile = userStorage.getProfile();
-      console.debug('🔍 Immediate verification:', {
-        tokenRetrieved: !!verifyToken,
-        tokenMatch: verifyToken === token,
-        profileRetrieved: !!verifyProfile,
-        profileMatch: verifyProfile?.id === user.id,
-        rawLocalStorageToken: localStorage.getItem('fluxion_auth_token') ? 'exists' : 'missing'
-      });
+      const rawTokenCheck = localStorage.getItem('fluxion_auth_token');
+      const rawProfileCheck = localStorage.getItem('fluxion_user_profile');
       
+      console.debug('🔍 Post-storage verification:', {
+        tokenRetrieved: !!verifyToken,
+        tokenMatches: verifyToken === token,
+        profileRetrieved: !!verifyProfile,
+        profileMatches: verifyProfile?.id === user.id,
+        rawTokenExists: !!rawTokenCheck,
+        rawProfileExists: !!rawProfileCheck
+      });
+
+      // Throw error if storage verification fails
       if (!verifyToken) {
-        console.error('❌ CRITICAL: Token was not stored properly!');
-        throw new Error('Authentication token storage failed');
+        console.error('❌ CRITICAL ERROR: New user token storage failed verification!');
+        throw new Error('Authentication token storage verification failed');
+      }
+
+      if (!verifyProfile) {
+        console.error('❌ CRITICAL ERROR: New user profile storage failed verification!');
+        throw new Error('User profile storage verification failed');
       }
 
       // Set user state
@@ -532,7 +656,7 @@ export const useWalletAuth = () => {
       // Use the new chain-agnostic wallet connection
       const { connectAndAuth } = await import('@/utils/walletConnection');
       
-      const authResult = await connectAndAuth('http://localhost:3000');
+      const authResult = await connectAndAuth(config.api.mainService.baseUrl);
       
       console.debug(`✅ Auth: Connected on chain ${authResult.chainId} with address ${authResult.address}`);
       

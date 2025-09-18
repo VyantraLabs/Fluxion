@@ -87,8 +87,8 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
           templateApi.getCategories(),
         ]);
         
-        const templatesData = handleApiResponse(templatesResponse);
-        const categoriesData = handleApiResponse(categoriesResponse);
+        const templatesData = handleApiResponse<any>(templatesResponse);
+        const categoriesData = handleApiResponse<any>(categoriesResponse);
         
         // Handle templates data - extract from nested structure
         const templates = templatesData?.items || templatesData?.templates || [];

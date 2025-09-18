@@ -48,7 +48,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({ token }) => {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
       const response = await invoiceApi.getClientInvoice(token);
-      const data = handleApiResponse(response);
+      const data = handleApiResponse<ClientAccessResponse>(response);
       
       setState(prev => ({
         ...prev,
@@ -69,7 +69,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({ token }) => {
     fetchInvoiceData();
   }, [token]);
 
-  const handlePaymentSubmit = async (txHash: string) => {
+  const handlePaymentSubmit = async (txHash: string, payerAddress: string) => {
     if (!state.data) return;
 
     try {
@@ -79,7 +79,7 @@ export const InvoiceView: React.FC<InvoiceViewProps> = ({ token }) => {
         paymentTxHash: txHash,
       }));
 
-      await paymentApi.submitPayment(state.data.invoice.id, txHash);
+      await paymentApi.submitPayment(state.data.invoice.id, txHash, payerAddress);
 
       // Refresh invoice data to get updated status
       await fetchInvoiceData();

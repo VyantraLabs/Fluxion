@@ -109,7 +109,7 @@ export const UserRoleManager: React.FC<UserRoleManagerProps> = ({
 
   useEffect(() => {
     if (isOpen && user) {
-      setSelectedRoles([...user.organization_roles]);
+      setSelectedRoles(user.organization_roles ? [...user.organization_roles] : []);
       setError(null);
     }
   }, [isOpen, user]);
@@ -181,7 +181,7 @@ export const UserRoleManager: React.FC<UserRoleManagerProps> = ({
     return <Icon className="w-4 h-4" />;
   };
 
-  const hasChanges = JSON.stringify(selectedRoles.sort()) !== JSON.stringify(user.organization_roles.sort());
+  const hasChanges = JSON.stringify(selectedRoles.sort()) !== JSON.stringify((user.organization_roles || []).sort());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
@@ -244,7 +244,7 @@ export const UserRoleManager: React.FC<UserRoleManagerProps> = ({
             {ORGANIZATION_ROLES.map((role) => {
               const isSelected = selectedRoles.includes(role.id);
               const canModify = canModifyRole(role);
-              const isCurrentUserOwner = user.organization_roles.includes('owner') && role.id === 'owner' && user.id === permissions?.user.id;
+              const isCurrentUserOwner = (user.organization_roles || []).includes('owner') && role.id === 'owner' && user.id === permissions?.user.id;
               const isDisabled = !canModify || isCurrentUserOwner;
 
               return (

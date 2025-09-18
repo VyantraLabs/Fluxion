@@ -1,5 +1,9 @@
 # Fluxion - Web3 Payment Platform
 
+**Version**: 3.0.0 - Production-Ready Platform  
+**Last Updated**: September 18, 2025  
+**Status**: Complete Web3 Invoice Platform with Consolidated Documentation
+
 A production-ready Web3 payment platform for crypto-native invoicing and payroll, built with Node.js, TypeScript, PostgreSQL, and Next.js.
 
 ## 🚀 Overview
@@ -7,7 +11,7 @@ A production-ready Web3 payment platform for crypto-native invoicing and payroll
 Fluxion is a comprehensive Web3 payment platform designed to be the "Stripe of Web3" - providing crypto-native invoicing, multi-blockchain payment processing, and enterprise-grade tools for the decentralized economy.
 
 ### 🎯 **Current Status: 100% COMPLETE - Production-Ready Web3 Invoice Platform**
-**Last Updated**: September 5, 2025 | **Version**: 2.0.0 Production Release
+**Last Updated**: September 18, 2025 | **Version**: 3.0.0 Production Release
 
 ✅ **COMPLETED MAJOR FEATURES**
 - **✅ Web3 Authentication System**: Wallet signature verification with JWT tokens
@@ -577,13 +581,31 @@ test: add integration tests for payment verification
 ✅ **Documentation**: Complete API and deployment docs  
 🌟 **Ready for**: Production deployment and user onboarding
 
+## 📚 Documentation
+
+### **Complete Documentation Suite**
+This repository includes comprehensive documentation covering all aspects of the Fluxion platform:
+
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Complete system architecture, database design, and technical specifications
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment guide with AWS infrastructure setup
+- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Developer onboarding, workflows, and contribution guidelines  
+- **[API.md](./API.md)** - Complete API reference with examples and integration guides
+- **[SECURITY.md](./SECURITY.md)** - Security architecture, authentication, and compliance documentation
+- **[CLAUDE.md](./CLAUDE.md)** - AI assistant instructions for development support
+
+### **Quick Navigation**
+- **Getting Started**: See [DEVELOPMENT.md](./DEVELOPMENT.md) for setup instructions
+- **Deployment**: See [DEPLOYMENT.md](./DEPLOYMENT.md) for production deployment
+- **API Integration**: See [API.md](./API.md) for complete API documentation
+- **System Design**: See [ARCHITECTURE.md](./ARCHITECTURE.md) for technical architecture
+
 ## 📝 License & Support
 
 ### **License**
 MIT License - see [LICENSE](LICENSE) file for details.
 
 ### **Support Channels**
-- **Documentation**: Complete deployment and API docs included
+- **Documentation**: Complete documentation suite included (see above)
 - **Issues**: Create GitHub issues for bugs and feature requests
 - **Email**: devops@fluxion.pay for technical support
 - **Community**: Join our Discord for discussions and updates

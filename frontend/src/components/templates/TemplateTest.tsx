@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { templateApi, handleApiResponse } from '@/utils/api';
-import { config } from '@/utils/config';
+import { config, apiEndpoints } from '@/utils/config';
 
 export const TemplateTest: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -27,7 +27,7 @@ export const TemplateTest: React.FC = () => {
       
       // Test direct fetch first (using unified endpoint)
       console.log('Testing direct fetch...');
-      const directResponse = await fetch(config.api.baseUrl + '/templates');
+      const directResponse = await fetch(config.api.baseUrl + apiEndpoints.templates.base);
       console.log('Direct fetch response status:', directResponse.status);
       const directData = await directResponse.json();
       console.log('Direct fetch data:', directData);
@@ -37,7 +37,7 @@ export const TemplateTest: React.FC = () => {
       const templatesResponse = await templateApi.getAll({ limit: 5 });
       console.log('Templates API response:', templatesResponse);
       
-      const templatesData = handleApiResponse(templatesResponse);
+      const templatesData = handleApiResponse<any>(templatesResponse);
       console.log('Processed templates data:', templatesData);
       
       // Test categories (unified endpoint)
@@ -45,7 +45,7 @@ export const TemplateTest: React.FC = () => {
       const categoriesResponse = await templateApi.getCategories();
       console.log('Categories API response:', categoriesResponse);
       
-      const categoriesData = handleApiResponse(categoriesResponse);
+      const categoriesData = handleApiResponse<any>(categoriesResponse);
       console.log('Processed categories data:', categoriesData);
       
       // Set data

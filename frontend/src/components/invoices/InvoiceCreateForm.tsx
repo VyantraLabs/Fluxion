@@ -206,7 +206,7 @@ export const InvoiceCreateForm: React.FC<InvoiceCreateFormProps> = ({
         response = await invoiceApi.saveDraft(draftData);
       }
 
-      const invoice = handleApiResponse(response);
+      const invoice = handleApiResponse<any>(response);
       
       // Clear draft from localStorage
       localStorage.removeItem('fluxion_draft_invoice');
@@ -260,7 +260,7 @@ export const InvoiceCreateForm: React.FC<InvoiceCreateFormProps> = ({
         response = await invoiceApi.create(invoiceData);
       }
 
-      const invoice = handleApiResponse(response);
+      const invoice = handleApiResponse<any>(response);
 
       // Send invoice if requested
       if (sendImmediately && formData.clientEmail) {

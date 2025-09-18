@@ -14,7 +14,8 @@ import {
   GlobalStats,
 } from '@/types/user';
 import { useAuth } from './AuthContext';
-import { apiRequest, handleApiResponse } from '@/utils/api';
+import { apiRequest, handleApiResponse, organizationApi } from '@/utils/api';
+import { config } from '@/utils/config';
 import toast from 'react-hot-toast';
 
 // Initial state
@@ -125,12 +126,12 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const response = await apiRequest.get('/organizations');
+      const response = await organizationApi.getAll();
       const data = handleApiResponse(response);
       
       // Backend returns organizations directly in data field (not nested in data.data)
       // Ensure we always have an array
-      const organizationsArray = Array.isArray(data) ? data : (Array.isArray(data?.organizations) ? data.organizations : []);
+      const organizationsArray = Array.isArray(data) ? data : (data && typeof data === 'object' && Array.isArray((data as any).organizations) ? (data as any).organizations : []);
       dispatch({ type: 'SET_ORGANIZATIONS', payload: organizationsArray });
     } catch (error: any) {
       console.error('Failed to fetch organizations:', error);
@@ -181,11 +182,12 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const response = await apiRequest.get('/dashboard');
+      const response = await apiRequest.get(`${config.api.basePath}/dashboard`);
+      // Note: Dashboard endpoint should be added to apiEndpoints in the future
       const data = handleApiResponse(response);
       
-      dispatch({ type: 'SET_GLOBAL_STATS', payload: data });
-      return data;
+      dispatch({ type: 'SET_GLOBAL_STATS', payload: data as any });
+      return data as any;
     } catch (error: any) {
       console.error('Failed to fetch global statistics:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message || 'Failed to fetch global statistics' });
@@ -223,10 +225,10 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error('No organization specified');
       }
 
-      const response = await apiRequest.get(`/organizations/${targetOrgId}/users`);
+      const response = await apiRequest.get(`${config.api.basePath}/organizations/${targetOrgId}/users`);
       const data = handleApiResponse(response);
       
-      return data.data || data.users || [];
+      return (data as any).data || (data as any).users || [];
     } catch (error: any) {
       console.error('Failed to fetch organization users:', error);
       throw error;
@@ -235,7 +237,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const inviteUser = async (data: InviteUserRequest): Promise<void> => {
     try {
-      const response = await apiRequest.post(`/organizations/${data.organization_id}/users/invite`, {
+      const response = await apiRequest.post(`${config.api.basePath}/organizations/${data.organization_id}/users/invite`, {
         email: data.email,
         wallet_address: data.wallet_address,
         roles: data.roles,
@@ -255,7 +257,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateUserRoles = async (data: UpdateUserRolesRequest): Promise<void> => {
     try {
       const response = await apiRequest.put(
-        `/organizations/${data.organization_id}/users/${data.user_id}/roles`,
+        `${config.api.basePath}/organizations/${data.organization_id}/users/${data.user_id}/roles`,
         { roles: data.roles }
       );
 
@@ -272,7 +274,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
   const removeUser = async (data: RemoveUserRequest): Promise<void> => {
     try {
       const response = await apiRequest.delete(
-        `/organizations/${data.organization_id}/users/${data.user_id}`
+        `${config.api.basePath}/organizations/${data.organization_id}/users/${data.user_id}`
       );
 
       handleApiResponse(response);
@@ -302,12 +304,12 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({
       if (filters?.offset) params.append('offset', filters.offset.toString());
 
       const queryString = params.toString();
-      const url = `/organizations/${targetOrgId}/activity${queryString ? `?${queryString}` : ''}`;
+      const url = `${config.api.basePath}/organizations/${targetOrgId}/activity${queryString ? `?${queryString}` : ''}`;
       
       const response = await apiRequest.get(url);
       const data = handleApiResponse(response);
       
-      return data.data || data.activity || [];
+      return (data as any).data || (data as any).activity || [];
     } catch (error: any) {
       console.error('Failed to fetch activity logs:', error);
       throw error;
@@ -387,7 +389,7 @@ export const useUserPermissions = (): UserPermissionContext | null => {
 
   return {
     user,
-    organization,
+    organization: organization || undefined,
     isOwner,
     isSystemAdmin,
     isOrgAdmin,

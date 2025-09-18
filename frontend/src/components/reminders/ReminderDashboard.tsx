@@ -90,8 +90,8 @@ export const ReminderDashboard: React.FC<ReminderDashboardProps> = ({ className 
           reminderApi.getStats(),
         ]);
         
-        const remindersData = handleApiResponse(remindersResponse);
-        const statsData = handleApiResponse(statsResponse);
+        const remindersData = handleApiResponse<any>(remindersResponse);
+        const statsData = handleApiResponse<any>(statsResponse);
         
         // Handle reminders data - extract from nested structure and validate
         const remindersArray = remindersData?.reminders;

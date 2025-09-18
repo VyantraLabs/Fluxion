@@ -29,7 +29,7 @@ class SafeStorage {
   // Get item with optional expiration check
   get<T>(key: string): T | null {
     if (!this.isAvailable) {
-      console.error('🚫 Storage not available for key:', key);
+      console.error('🚫 SafeStorage not available for key:', key);
       return null;
     }
 
@@ -38,29 +38,57 @@ class SafeStorage {
       console.debug('🔍 SafeStorage getting item:', {
         key,
         exists: !!item,
-        length: item?.length || 0
+        length: item?.length || 0,
+        preview: item ? item.substring(0, 50) + '...' : null
       });
       
-      if (!item) return null;
+      if (!item) {
+        console.debug('📭 SafeStorage item not found:', key);
+        return null;
+      }
 
-      const parsed: StorageItem<T> = JSON.parse(item);
+      let parsed: StorageItem<T>;
+      try {
+        parsed = JSON.parse(item);
+        console.debug('📦 SafeStorage parsed item:', {
+          key,
+          hasValue: 'value' in parsed,
+          hasTimestamp: 'timestamp' in parsed,
+          hasExpiration: 'expiresAt' in parsed,
+          valueType: typeof parsed.value,
+          structure: Object.keys(parsed)
+        });
+      } catch (parseError) {
+        console.error('❌ SafeStorage JSON parse error for key:', key, parseError);
+        console.debug('Raw data that failed to parse:', item);
+        return null;
+      }
       
       // Check if item has expired
       if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
-        console.debug('🕒 Item expired, removing:', key);
+        console.debug('🕒 SafeStorage item expired, removing:', {
+          key,
+          expiresAt: new Date(parsed.expiresAt).toISOString(),
+          now: new Date().toISOString()
+        });
         this.remove(key);
         return null;
       }
 
-      console.debug('✅ SafeStorage retrieved item:', {
+      console.debug('✅ SafeStorage retrieved item successfully:', {
         key,
         hasValue: parsed.value !== null && parsed.value !== undefined,
-        timestamp: new Date(parsed.timestamp).toISOString()
+        valueType: typeof parsed.value,
+        timestamp: new Date(parsed.timestamp).toISOString(),
+        expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt).toISOString() : 'never'
       });
 
       return parsed.value;
     } catch (error) {
-      console.error(`❌ Error getting item from storage: ${key}`, error);
+      console.error(`❌ SafeStorage error getting item: ${key}`, {
+        error: error.message,
+        stack: error.stack
+      });
       return null;
     }
   }
@@ -68,41 +96,62 @@ class SafeStorage {
   // Set item with optional expiration
   set<T>(key: string, value: T, expiresInMs?: number): boolean {
     if (!this.isAvailable) {
-      console.error('🚫 Storage not available for key:', key);
+      console.error('🚫 SafeStorage not available for key:', key);
       return false;
     }
 
     try {
+      const now = Date.now();
       const item: StorageItem<T> = {
         value,
-        timestamp: Date.now(),
-        expiresAt: expiresInMs ? Date.now() + expiresInMs : undefined,
+        timestamp: now,
+        expiresAt: expiresInMs ? now + expiresInMs : undefined,
       };
 
       const serializedItem = JSON.stringify(item);
       console.debug('🔄 SafeStorage setting item:', {
         key,
         valueType: typeof value,
+        valueLength: typeof value === 'string' ? value.length : 'N/A',
         hasExpiration: !!expiresInMs,
-        serializedLength: serializedItem.length
+        expiresAt: item.expiresAt ? new Date(item.expiresAt).toISOString() : 'never',
+        serializedLength: serializedItem.length,
+        timestamp: new Date(now).toISOString()
       });
 
       localStorage.setItem(key, serializedItem);
       
-      // Immediate verification
+      // Immediate verification with detailed logging
       const verification = localStorage.getItem(key);
       const success = verification === serializedItem;
       
-      console.debug('✅ SafeStorage set result:', {
+      console.debug('✅ SafeStorage set verification:', {
         key,
         success,
         stored: !!verification,
-        matches: success
+        matches: success,
+        verificationLength: verification?.length || 0,
+        serializedLength: serializedItem.length
       });
+
+      // If verification fails, provide more details
+      if (!success) {
+        console.error('❌ SafeStorage set verification failed:', {
+          key,
+          expectedLength: serializedItem.length,
+          actualLength: verification?.length || 0,
+          expectedStart: serializedItem.substring(0, 50),
+          actualStart: verification?.substring(0, 50) || 'null'
+        });
+      }
       
       return success;
     } catch (error) {
-      console.error(`❌ Error setting item in storage: ${key}`, error);
+      console.error(`❌ SafeStorage error setting item: ${key}`, {
+        error: error.message,
+        valueType: typeof value,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -183,17 +232,53 @@ export const STORAGE_KEYS = {
 
 // Typed storage functions for specific data
 export const authStorage = {
-  getToken: (): string | null => 
-    storage.get<string>(STORAGE_KEYS.AUTH_TOKEN),
+  getToken: (): string | null => {
+    const token = storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
+    console.debug('🔍 authStorage.getToken() called:', {
+      tokenRetrieved: !!token,
+      tokenLength: token?.length || 0,
+      tokenPreview: token ? token.substring(0, 25) + '...' : 'null',
+      storageKey: STORAGE_KEYS.AUTH_TOKEN,
+      timestamp: new Date().toISOString()
+    });
+    return token;
+  },
   
-  setToken: (token: string, expiresInMs?: number): boolean => 
-    storage.set(STORAGE_KEYS.AUTH_TOKEN, token, expiresInMs),
+  setToken: (token: string, expiresInMs?: number): boolean => {
+    console.debug('🔄 authStorage.setToken() called:', {
+      tokenLength: token?.length || 0,
+      hasExpiration: !!expiresInMs,
+      expiresInMs,
+      storageKey: STORAGE_KEYS.AUTH_TOKEN,
+      timestamp: new Date().toISOString()
+    });
+    
+    const result = storage.set(STORAGE_KEYS.AUTH_TOKEN, token, expiresInMs);
+    
+    // Immediate verification
+    const verification = storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
+    const success = verification === token;
+    
+    console.debug('🔍 authStorage.setToken() verification:', {
+      storageResult: result,
+      verificationSuccess: success,
+      verifiedTokenLength: verification?.length || 0,
+      tokensMatch: verification === token
+    });
+    
+    return result && success;
+  },
   
-  removeToken: (): boolean => 
-    storage.remove(STORAGE_KEYS.AUTH_TOKEN),
+  removeToken: (): boolean => {
+    console.debug('🗑️ authStorage.removeToken() called');
+    return storage.remove(STORAGE_KEYS.AUTH_TOKEN);
+  },
 
-  isAuthenticated: (): boolean => 
-    !!storage.get<string>(STORAGE_KEYS.AUTH_TOKEN),
+  isAuthenticated: (): boolean => {
+    const isAuth = !!storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
+    console.debug('🔍 authStorage.isAuthenticated() called:', { isAuthenticated: isAuth });
+    return isAuth;
+  },
 };
 
 export const userStorage = {

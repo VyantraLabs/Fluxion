@@ -308,7 +308,7 @@ export const getUSDCBalance = async (
     throw new Error(`USDC contract not found for chain ${targetChainId}`);
   }
 
-  return getTokenBalance(usdcContract.address, walletAddress, targetChainId);
+  return getTokenBalance((usdcContract as any).address, walletAddress, targetChainId);
 };
 
 // Send USDC transfer
@@ -328,10 +328,10 @@ export const sendUSDCTransfer = async (
 
   try {
     const signer = await provider.getSigner();
-    const contract = new ethers.Contract(usdcContract.address, ERC20_ABI, signer);
+    const contract = new ethers.Contract((usdcContract as any).address, ERC20_ABI, signer);
     
     // Parse amount to wei (USDC has 6 decimals)
-    const amountWei = ethers.parseUnits(transfer.amount, usdcContract.decimals);
+    const amountWei = ethers.parseUnits(transfer.amount, (usdcContract as any).decimals);
     
     const transaction = await contract.transfer(transfer.to, amountWei);
     return transaction.hash as TransactionHash;
@@ -474,16 +474,16 @@ export const verifyUSDCTransfer = async (
   const transferTopic = iface.getEvent('Transfer')?.topicHash;
   
   if (!transferTopic) {
-    return { isValid: false, confirmations: receipt.confirmations || 0 };
+    return { isValid: false, confirmations: (receipt as any).confirmations || 0 };
   }
 
   const transferLog = receipt.logs.find(log => 
-    log.address.toLowerCase() === usdcContract.address.toLowerCase() &&
+    log.address.toLowerCase() === (usdcContract as any).address.toLowerCase() &&
     log.topics[0] === transferTopic
   );
 
   if (!transferLog) {
-    return { isValid: false, confirmations: receipt.confirmations || 0 };
+    return { isValid: false, confirmations: (receipt as any).confirmations || 0 };
   }
 
   try {
@@ -493,11 +493,11 @@ export const verifyUSDCTransfer = async (
     });
 
     if (!parsedLog) {
-      return { isValid: false, confirmations: receipt.confirmations || 0 };
+      return { isValid: false, confirmations: (receipt as any).confirmations || 0 };
     }
 
     const actualRecipient = parsedLog.args.to.toLowerCase() as WalletAddress;
-    const actualAmount = ethers.formatUnits(parsedLog.args.value, usdcContract.decimals);
+    const actualAmount = ethers.formatUnits(parsedLog.args.value, (usdcContract as any).decimals);
     const expectedAmountFormatted = expectedAmount;
 
     const isValid = 
@@ -508,11 +508,11 @@ export const verifyUSDCTransfer = async (
       isValid,
       actualAmount,
       actualRecipient,
-      confirmations: receipt.confirmations || 0,
+      confirmations: (receipt as any).confirmations || 0,
     };
   } catch (error) {
     console.error('Error parsing transfer log:', error);
-    return { isValid: false, confirmations: receipt.confirmations || 0 };
+    return { isValid: false, confirmations: (receipt as any).confirmations || 0 };
   }
 };
 

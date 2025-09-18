@@ -22,7 +22,7 @@ interface PaymentMethodsProps {
   network: BlockchainNetwork;
   paymentAddress: string;
   qrCodeData?: string;
-  onPaymentSubmit: (txHash: string) => void;
+  onPaymentSubmit: (txHash: string, payerAddress: string) => void;
   isSubmittingPayment?: boolean;
 }
 

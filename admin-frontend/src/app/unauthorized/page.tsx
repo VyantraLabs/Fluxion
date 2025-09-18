@@ -19,8 +19,8 @@ export default function UnauthorizedPage() {
         user: user ? {
           id: user.id,
           wallet_address: user.wallet_address,
-          system_roles: user.system_roles,
-          organization_roles: user.organization_roles
+          system_roles: (user as any).system_roles,
+          organization_roles: (user as any).organization_roles
         } : null,
         storedToken: !!adminAuthStorage.getToken(),
         storedUser: !!adminUserStorage.getProfile()
@@ -65,13 +65,13 @@ export default function UnauthorizedPage() {
                 <div className="text-xs text-gray-600 space-y-1">
                   <p><span className="font-medium">Wallet:</span> {user.wallet_address}</p>
                   <p><span className="font-medium">System Access:</span> {hasSystemAccess(user) ? 'Yes' : 'No'}</p>
-                  {user.system_roles && user.system_roles.length > 0 ? (
-                    <p><span className="font-medium">System Roles:</span> {user.system_roles.map(role => getSystemRoleDisplayName(role)).join(', ')}</p>
+                  {(user as any).system_roles && (user as any).system_roles.length > 0 ? (
+                    <p><span className="font-medium">System Roles:</span> {(user as any).system_roles.map((role: string) => getSystemRoleDisplayName(role)).join(', ')}</p>
                   ) : (
                     <p><span className="font-medium">System Roles:</span> None</p>
                   )}
-                  {user.organization_roles && user.organization_roles.length > 0 ? (
-                    <p><span className="font-medium">Organization Roles:</span> {user.organization_roles.join(', ')}</p>
+                  {(user as any).organization_roles && (user as any).organization_roles.length > 0 ? (
+                    <p><span className="font-medium">Organization Roles:</span> {(user as any).organization_roles.join(', ')}</p>
                   ) : (
                     <p><span className="font-medium">Organization Roles:</span> None</p>
                   )}

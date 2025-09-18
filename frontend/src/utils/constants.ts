@@ -105,14 +105,19 @@ export const STORAGE_KEYS = {
   ONBOARDING_COMPLETED: 'fluxion_onboarding_completed',
 } as const;
 
-// API constants
+// API constants (DEPRECATED - Use apiEndpoints from config.ts instead)
+// These are kept for backward compatibility but should not be used in new code
 export const API_ENDPOINTS = {
-  HEALTH: '/health',
-  AUTH_MESSAGE: '/users/auth/message',
-  AUTH_VERIFY: '/users/auth/verify',
-  INVOICES: '/invoices',
-  PAYMENTS_VERIFY: '/payments/verify',
+  HEALTH: '/health', // This is root-level, doesn't use base path
+  AUTH_MESSAGE: '/users/auth/message', // Deprecated: Use apiEndpoints.auth.message
+  AUTH_VERIFY: '/users/auth/verify', // Deprecated: Use apiEndpoints.auth.verify
+  INVOICES: '/invoices', // Deprecated: Use apiEndpoints.invoices.base
+  PAYMENTS_VERIFY: '/payments/verify', // Deprecated: Use apiEndpoints.payments.verify
 } as const;
+
+// Note: For new code, import and use apiEndpoints from '@/utils/config' instead:
+// import { apiEndpoints } from '@/utils/config';
+// Use: apiEndpoints.auth.message instead of API_ENDPOINTS.AUTH_MESSAGE
 
 // Pagination constants
 export const PAGINATION = {

@@ -18,7 +18,7 @@ interface WalletConnectPaymentProps {
   token: Token;
   network: BlockchainNetwork;
   paymentAddress: string;
-  onPaymentSubmit: (txHash: string) => void;
+  onPaymentSubmit: (txHash: string, payerAddress: string) => void;
   isSubmitting?: boolean;
 }
 
@@ -212,7 +212,7 @@ export const WalletConnectPayment: React.FC<WalletConnectPaymentProps> = ({
       });
 
       setTxHash(hash);
-      onPaymentSubmit(hash);
+      onPaymentSubmit(hash, wallet!.address);
     } catch (error: any) {
       console.error('Failed to send payment:', error);
       setError(error.message || 'Failed to send payment');

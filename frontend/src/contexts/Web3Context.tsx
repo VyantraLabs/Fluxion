@@ -224,7 +224,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children
       // Handle user rejection specifically
       if (error.code === 4001 || error.message?.includes('User rejected')) {
         const userRejectedError = new WalletErrorInfo({
-          code: WalletError.USER_REJECTED_REQUEST,
+          code: WalletError.USER_REJECTED,
           message: 'Connection cancelled by user',
         });
         throw userRejectedError;
@@ -332,9 +332,3 @@ export const useSigner = () => {
   return signer;
 };
 
-// Extend Window interface for TypeScript
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
