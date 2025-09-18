@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { WalletConnectButton } from '@/components/web3/WalletConnectButton';
 import { useWalletAuth } from '@/contexts/AuthContext';
-import { enableMockWallet } from '@/utils/mockWallet';
+// Mock wallet utility removed during repository cleanup
+// import { enableMockWallet } from '@/utils/mockWallet';
 
 export default function TestWalletPage() {
   const { 
@@ -19,7 +20,8 @@ export default function TestWalletPage() {
   const [mockEnabled, setMockEnabled] = useState(false);
 
   const enableMock = () => {
-    enableMockWallet();
+    // Mock wallet functionality disabled - utility removed during cleanup
+    console.log('Mock wallet functionality disabled in production build');
     setMockEnabled(true);
   };
 

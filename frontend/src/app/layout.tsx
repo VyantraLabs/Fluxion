@@ -3,11 +3,7 @@ import { Inter } from 'next/font/google';
 import { Providers } from './providers';
 import './globals.css';
 
-// Import mock wallet and debug utilities for development testing
-if (process.env.NODE_ENV === 'development') {
-  import('@/utils/mockWallet');
-  import('@/utils/debug-auth');
-}
+// Development utilities removed during repository cleanup
 
 const inter = Inter({ subsets: ['latin'] });
 
