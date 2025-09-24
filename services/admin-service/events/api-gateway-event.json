@@ -1,0 +1,71 @@
+{
+  "resource": "/{proxy+}",
+  "path": "/admin/health",
+  "httpMethod": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test-token",
+    "CloudFront-Forwarded-Proto": "https",
+    "CloudFront-Is-Desktop-Viewer": "true",
+    "CloudFront-Is-Mobile-Viewer": "false",
+    "CloudFront-Is-SmartTV-Viewer": "false",
+    "CloudFront-Is-Tablet-Viewer": "false",
+    "CloudFront-Viewer-Country": "US",
+    "Content-Type": "application/json",
+    "Host": "admin.fluxion.pay",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    "Via": "1.1 cloudfront.amazonaws.com (CloudFront)",
+    "X-Amz-Cf-Id": "test-cloudfront-id",
+    "X-Amzn-Trace-Id": "Root=1-test-trace-id",
+    "X-Forwarded-For": "192.168.1.1",
+    "X-Forwarded-Port": "443",
+    "X-Forwarded-Proto": "https"
+  },
+  "multiValueHeaders": {},
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": {
+    "proxy": "admin/health"
+  },
+  "stageVariables": null,
+  "requestContext": {
+    "resourceId": "test123",
+    "resourcePath": "/{proxy+}",
+    "httpMethod": "GET",
+    "extendedRequestId": "test-extended-id",
+    "requestTime": "25/Sep/2025:12:34:56 +0000",
+    "path": "/dev/admin/health",
+    "accountId": "123456789012",
+    "protocol": "HTTP/1.1",
+    "stage": "dev",
+    "domainPrefix": "admin",
+    "requestTimeEpoch": 1727267696,
+    "requestId": "test-request-id",
+    "identity": {
+      "cognitoIdentityPoolId": null,
+      "accountId": null,
+      "cognitoIdentityId": null,
+      "caller": null,
+      "sourceIp": "192.168.1.1",
+      "principalOrgId": null,
+      "accessKey": null,
+      "cognitoAuthenticationType": null,
+      "cognitoAuthenticationProvider": null,
+      "userArn": null,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+      "user": null
+    },
+    "domainName": "admin.fluxion.pay",
+    "apiId": "test-api-id",
+    "authorizer": {
+      "principalId": "test-user-id",
+      "userId": "test-user-id",
+      "organizationId": "test-org-id",
+      "role": "admin"
+    }
+  },
+  "body": null,
+  "isBase64Encoded": false
+}

@@ -1,0 +1,409 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fluxion Microservices Lambda Deployment
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, production]
+    Description: Environment name
+  
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: VPC Security Group IDs for Lambda functions
+    Default: ""
+  
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: VPC Subnet IDs for Lambda functions  
+    Default: ""
+  
+  DBHost:
+    Type: String
+    Description: Database host
+    Default: localhost
+  
+  DBPort:
+    Type: String
+    Description: Database port
+    Default: "5432"
+  
+  DBUsername:
+    Type: String
+    Description: Database username
+    Default: postgres
+  
+  DBPassword:
+    Type: String
+    Description: Database password
+    NoEcho: true
+    Default: password
+  
+  DBDatabase:
+    Type: String
+    Description: Database name
+    Default: fluxion_dev
+  
+  RedisHost:
+    Type: String
+    Description: Redis host
+    Default: ""
+  
+  RedisPort:
+    Type: String
+    Description: Redis port
+    Default: "6379"
+  
+  JWTSecret:
+    Type: String
+    Description: JWT signing secret
+    NoEcho: true
+    Default: "change-me-in-production"
+  
+  NotificationQueueUrl:
+    Type: String
+    Description: SQS queue URL for notifications
+    Default: ""
+  
+  S3BucketName:
+    Type: String
+    Description: S3 bucket for file storage
+    Default: ""
+
+Conditions:
+  HasVpcConfig: !Not [!Equals [!Join [",", !Ref VpcSubnetIds], ""]]
+  HasRedis: !Not [!Equals [!Ref RedisHost, ""]]
+  HasNotificationQueue: !Not [!Equals [!Ref NotificationQueueUrl, ""]]
+  HasS3Bucket: !Not [!Equals [!Ref S3BucketName, ""]]
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        NODE_ENV: !Ref Environment
+        LOG_LEVEL: info
+        DB_HOST: !Ref DBHost
+        DB_PORT: !Ref DBPort
+        DB_USERNAME: !Ref DBUsername
+        DB_PASSWORD: !Ref DBPassword
+        DB_DATABASE: !Ref DBDatabase
+        REDIS_HOST: !If [HasRedis, !Ref RedisHost, !Ref "AWS::NoValue"]
+        REDIS_PORT: !If [HasRedis, !Ref RedisPort, !Ref "AWS::NoValue"]
+        JWT_SECRET: !Ref JWTSecret
+        JWT_EXPIRES_IN: "24h"
+        NOTIFICATION_QUEUE_URL: !If [HasNotificationQueue, !Ref NotificationQueueUrl, !Ref "AWS::NoValue"]
+        S3_BUCKET_NAME: !If [HasS3Bucket, !Ref S3BucketName, !Ref "AWS::NoValue"]
+        REGION: !Ref AWS::Region
+    VpcConfig: !If
+      - HasVpcConfig
+      - SecurityGroupIds: !Ref VpcSecurityGroupIds
+        SubnetIds: !Ref VpcSubnetIds
+      - !Ref "AWS::NoValue"
+    ReservedConcurrentExecutions: 100
+
+Resources:
+  # Shared API Gateway
+  FluxionApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      EndpointConfiguration:
+        Type: REGIONAL
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+  
+  # API Gateway Log Group
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/fluxion-${Environment}"
+      RetentionInDays: 14
+
+  # Lambda Authorizer Function
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-authorizer"
+      CodeUri: deployment/lambda-services/authorizer/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JWTSecret
+      Events:
+        WarmUp:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{"source": "warmup"}'
+
+  # Main Service Function
+  MainServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-main-service"
+      CodeUri: deployment/lambda-services/main-service/
+      Handler: lambda.handler
+      Runtime: nodejs20.x
+      Timeout: 30
+      MemorySize: 512
+      ReservedConcurrentExecutions: 50
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FluxionApi
+            Path: /api/{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: FluxionAuthorizer
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FluxionApi
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        WarmUp:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{"source": "warmup"}'
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt MainServiceDLQ.Arn
+
+  # Admin Service Function
+  AdminServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-admin-service"
+      CodeUri: deployment/lambda-services/admin-service/
+      Handler: lambda.handler
+      Runtime: nodejs20.x
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 25
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FluxionApi
+            Path: /admin/{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: FluxionAuthorizer
+        WarmUp:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{"source": "warmup"}'
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt AdminServiceDLQ.Arn
+
+  # Notification Service Function (SQS Consumer)
+  NotificationServiceFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasNotificationQueue
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-notification-service"
+      CodeUri: notification-lambda/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Timeout: 60
+      MemorySize: 256
+      ReservedConcurrentExecutions: 10
+      Events:
+        NotificationQueue:
+          Type: SQS
+          Properties:
+            Queue: !Ref NotificationQueueUrl
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 30
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt NotificationServiceDLQ.Arn
+
+  # Dead Letter Queues
+  MainServiceDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "fluxion-${Environment}-main-service-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 60
+
+  AdminServiceDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "fluxion-${Environment}-admin-service-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 60
+
+  NotificationServiceDLQ:
+    Type: AWS::SQS::Queue
+    Condition: HasNotificationQueue
+    Properties:
+      QueueName: !Sub "fluxion-${Environment}-notification-service-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 60
+
+  # CloudWatch Log Groups
+  MainServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/fluxion-${Environment}-main-service"
+      RetentionInDays: 14
+
+  AdminServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/fluxion-${Environment}-admin-service"
+      RetentionInDays: 14
+
+  NotificationServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: HasNotificationQueue
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/fluxion-${Environment}-notification-service"
+      RetentionInDays: 14
+
+  AuthorizerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/fluxion-${Environment}-authorizer"
+      RetentionInDays: 7
+
+  # IAM Roles and Policies
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "fluxion-${Environment}-lambda-execution-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !If [HasVpcConfig, "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole", !Ref "AWS::NoValue"]
+      Policies:
+        - PolicyName: FluxionLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              - !If
+                - HasNotificationQueue
+                - Effect: Allow
+                  Action:
+                    - sqs:ReceiveMessage
+                    - sqs:DeleteMessage
+                    - sqs:GetQueueAttributes
+                    - sqs:SendMessage
+                  Resource: 
+                    - !Ref NotificationQueueUrl
+                    - !GetAtt MainServiceDLQ.Arn
+                    - !GetAtt AdminServiceDLQ.Arn
+                    - !If [HasNotificationQueue, !GetAtt NotificationServiceDLQ.Arn, !Ref "AWS::NoValue"]
+                - !Ref "AWS::NoValue"
+              - !If
+                - HasS3Bucket
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                    - s3:PutObject
+                    - s3:DeleteObject
+                    - s3:ListBucket
+                  Resource:
+                    - !Sub "${S3BucketName}/*"
+                    - !Ref S3BucketName
+                - !Ref "AWS::NoValue"
+
+  # CloudWatch Alarms
+  MainServiceErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "fluxion-${Environment}-main-service-errors"
+      AlarmDescription: "Main service Lambda function errors"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainServiceFunction
+
+  AdminServiceErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "fluxion-${Environment}-admin-service-errors"
+      AlarmDescription: "Admin service Lambda function errors"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AdminServiceFunction
+
+Outputs:
+  FluxionApiUrl:
+    Description: "API Gateway endpoint URL for Fluxion services"
+    Value: !Sub "https://${FluxionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-url"
+
+  MainServiceUrl:
+    Description: "API Gateway endpoint URL for Main service"
+    Value: !Sub "https://${FluxionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/"
+    Export:
+      Name: !Sub "${AWS::StackName}-main-service-url"
+
+  AdminServiceUrl:
+    Description: "API Gateway endpoint URL for Admin service"
+    Value: !Sub "https://${FluxionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/admin/"
+    Export:
+      Name: !Sub "${AWS::StackName}-admin-service-url"
+
+  MainServiceFunctionArn:
+    Description: "Main Service Lambda Function ARN"
+    Value: !GetAtt MainServiceFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-main-service-arn"
+
+  AdminServiceFunctionArn:
+    Description: "Admin Service Lambda Function ARN"
+    Value: !GetAtt AdminServiceFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-admin-service-arn"
+
+  Environment:
+    Description: "Deployed environment"
+    Value: !Ref Environment
+    Export:
+      Name: !Sub "${AWS::StackName}-environment"

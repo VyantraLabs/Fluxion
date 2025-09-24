@@ -233,50 +233,92 @@ export const STORAGE_KEYS = {
 // Typed storage functions for specific data
 export const authStorage = {
   getToken: (): string | null => {
-    const token = storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
-    console.debug('🔍 authStorage.getToken() called:', {
+    // First try direct localStorage access (most reliable for API calls)
+    let token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+    
+    // If token looks like JSON, try to extract the value
+    if (token && token.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(token);
+        if (parsed.value) {
+          token = parsed.value;
+        }
+      } catch {
+        // Use as-is if parsing fails
+      }
+    }
+    
+    // Fallback to structured storage if direct access fails
+    if (!token) {
+      token = storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
+    }
+    
+    console.debug('🔍 authStorage.getToken() called (legacy compatibility):', {
       tokenRetrieved: !!token,
       tokenLength: token?.length || 0,
       tokenPreview: token ? token.substring(0, 25) + '...' : 'null',
       storageKey: STORAGE_KEYS.AUTH_TOKEN,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      source: localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) ? 'direct' : 'structured'
     });
     return token;
   },
   
   setToken: (token: string, expiresInMs?: number): boolean => {
-    console.debug('🔄 authStorage.setToken() called:', {
+    console.debug('🔄 authStorage.setToken() called (legacy compatibility):', {
       tokenLength: token?.length || 0,
       hasExpiration: !!expiresInMs,
       expiresInMs,
       storageKey: STORAGE_KEYS.AUTH_TOKEN,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      note: 'Storing token directly for API compatibility'
     });
     
-    const result = storage.set(STORAGE_KEYS.AUTH_TOKEN, token, expiresInMs);
-    
-    // Immediate verification
-    const verification = storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
-    const success = verification === token;
-    
-    console.debug('🔍 authStorage.setToken() verification:', {
-      storageResult: result,
-      verificationSuccess: success,
-      verifiedTokenLength: verification?.length || 0,
-      tokensMatch: verification === token
-    });
-    
-    return result && success;
+    try {
+      // Store token directly as string for API compatibility
+      localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+      
+      // Also store with structured format for backward compatibility
+      const result = storage.set(STORAGE_KEYS.AUTH_TOKEN + '_structured', token, expiresInMs);
+      
+      // Immediate verification
+      const directVerification = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+      const success = directVerification === token;
+      
+      console.debug('🔍 authStorage.setToken() verification:', {
+        storageResult: result,
+        verificationSuccess: success,
+        verifiedTokenLength: directVerification?.length || 0,
+        tokensMatch: directVerification === token,
+        directStorage: 'SUCCESS'
+      });
+      
+      return success;
+    } catch (error) {
+      console.error('❌ authStorage.setToken() error:', error);
+      return false;
+    }
   },
   
   removeToken: (): boolean => {
-    console.debug('🗑️ authStorage.removeToken() called');
-    return storage.remove(STORAGE_KEYS.AUTH_TOKEN);
+    console.debug('🗑️ authStorage.removeToken() called (legacy compatibility)');
+    try {
+      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN + '_structured');
+      storage.remove(STORAGE_KEYS.AUTH_TOKEN);
+      return true;
+    } catch (error) {
+      console.error('❌ authStorage.removeToken() error:', error);
+      return false;
+    }
   },
 
   isAuthenticated: (): boolean => {
     const isAuth = !!storage.get<string>(STORAGE_KEYS.AUTH_TOKEN);
-    console.debug('🔍 authStorage.isAuthenticated() called:', { isAuthenticated: isAuth });
+    console.debug('🔍 authStorage.isAuthenticated() called (legacy compatibility):', { 
+      isAuthenticated: isAuth,
+      note: 'Consider using userTokenManager for new code'
+    });
     return isAuth;
   },
 };

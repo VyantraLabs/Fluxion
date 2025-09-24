@@ -15,7 +15,7 @@
     "build:main": "pnpm --filter main-service build",
     "build:admin": "pnpm --filter admin-service build",
     "dev": "pnpm -r --parallel dev",
-    "dev:main": "pnpm --filter main-service dev", 
+    "dev:main": "pnpm --filter main-service dev",
     "dev:admin": "pnpm --filter admin-service dev",
     "test": "pnpm -r test",
     "test:main": "pnpm --filter main-service test",
@@ -29,13 +29,44 @@
     "start:services": "pnpm -r --parallel start",
     "migration:generate": "pnpm --filter @fluxion/shared-lib migration:generate",
     "migration:run": "pnpm --filter @fluxion/shared-lib migration:run",
-    "migration:revert": "pnpm --filter @fluxion/shared-lib migration:revert"
+    "migration:revert": "pnpm --filter @fluxion/shared-lib migration:revert",
+    "build:lambda": "node scripts/lambda-build.js build",
+    "build:lambda:main": "node scripts/lambda-build.js build main-service",
+    "build:lambda:admin": "node scripts/lambda-build.js build admin-service",
+    "package:shared-lib": "node scripts/package-shared-lib.js",
+    "deploy:dev": "./scripts/deploy.sh dev",
+    "deploy:staging": "./scripts/deploy.sh staging",
+    "deploy:prod": "./scripts/deploy.sh production",
+    "deploy:main:dev": "./scripts/deploy.sh dev main-service",
+    "deploy:admin:dev": "./scripts/deploy.sh dev admin-service",
+    "validate:templates": "sam validate --template-file template-microservices.yaml",
+    "logs:main": "sam logs --name fluxion-${ENVIRONMENT:-dev}-main-service --tail",
+    "logs:admin": "sam logs --name fluxion-${ENVIRONMENT:-dev}-admin-service --tail",
+    "invoke:main:local": "sam local invoke MainServiceFunction --template-file template-microservices.yaml",
+    "invoke:admin:local": "sam local invoke AdminServiceFunction --template-file template-microservices.yaml"
   },
-  "keywords": ["crypto", "invoicing", "polygon", "usdc", "web3", "payments", "microservices"],
+  "keywords": [
+    "crypto",
+    "invoicing",
+    "polygon",
+    "usdc",
+    "web3",
+    "payments",
+    "microservices"
+  ],
   "author": "Fluxion Team",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "@types/archiver": "^6.0.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.18.6",
+    "archiver": "^7.0.1",
+    "js-yaml": "^4.1.0",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0",
+    "pnpm": ">=8.0.0"
   }
 }

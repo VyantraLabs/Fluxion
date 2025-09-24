@@ -1,0 +1,54 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "DBHost",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/db-host}}"
+  },
+  {
+    "ParameterKey": "DBPort",
+    "ParameterValue": "5432"
+  },
+  {
+    "ParameterKey": "DBUsername",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/db-username}}"
+  },
+  {
+    "ParameterKey": "DBPassword",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/db-password}}"
+  },
+  {
+    "ParameterKey": "DBDatabase",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/db-database}}"
+  },
+  {
+    "ParameterKey": "RedisHost",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/redis-host}}"
+  },
+  {
+    "ParameterKey": "RedisPort",
+    "ParameterValue": "6379"
+  },
+  {
+    "ParameterKey": "JWTSecret",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/jwt-secret}}"
+  },
+  {
+    "ParameterKey": "NotificationQueueUrl",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/notification-queue-url}}"
+  },
+  {
+    "ParameterKey": "S3BucketName",
+    "ParameterValue": "{{resolve:ssm:/fluxion/dev/s3-bucket}}"
+  },
+  {
+    "ParameterKey": "VpcSecurityGroupIds",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "VpcSubnetIds",
+    "ParameterValue": ""
+  }
+]

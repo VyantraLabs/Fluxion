@@ -1,0 +1,15 @@
+{
+  "name": "fluxion-authorizer",
+  "version": "1.0.0",
+  "description": "Lambda authorizer for Fluxion API Gateway",
+  "main": "index.js",
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}

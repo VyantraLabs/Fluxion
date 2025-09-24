@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { config, apiEndpoints } from './config';
 import { ApiResponse, PaginatedResponse, ErrorCodes, TenantContext } from '@/types/common';
 import { authStorage } from './storage';
+import { userTokenManager } from './token-manager';
 // Import from api-client for unified service access
 import { mainApi, apiClient as unifiedApiClient } from '@/lib/api-client';
 // Import service-specific APIs for microservices routing
@@ -159,76 +160,60 @@ const generateRequestId = (): string => {
 };
 
 const getAuthToken = (): string | null => {
-  if (typeof window === 'undefined') {
-    console.debug('🔍 Legacy API Client - Server-side rendering, no token available');
-    return null;
-  }
+  // Use the unified token manager for consistent token retrieval
+  const token = userTokenManager.getToken();
   
-  let token = authStorage.getToken();
-  const directToken = localStorage.getItem('fluxion_auth_token');
-  
-  // Enhanced debug logging for authentication issues
-  console.debug('🔍 Legacy API Client - Getting auth token:', {
-    tokenExists: !!token,
-    tokenLength: token?.length || 0,
-    tokenPreview: token ? token.substring(0, 25) + '...' : 'null',
-    rawTokenExists: !!directToken,
-    rawTokenLength: directToken?.length || 0,
-    allFluxionKeys: Object.keys(localStorage).filter(k => k.includes('fluxion')),
-    authStorageMethodType: typeof authStorage.getToken,
-    timestamp: new Date().toISOString()
-  });
-  
-  // If authStorage returns null but raw localStorage has data, try to parse directly
-  if (!token && directToken) {
-    console.warn('⚠️ Legacy API Client - authStorage.getToken() returned null, trying direct localStorage parsing...');
-    
+  // If token manager doesn't have token, try fallback methods
+  let fallbackToken = null;
+  if (!token && typeof window !== 'undefined') {
+    // Try direct localStorage access
     try {
-      const parsed = JSON.parse(directToken);
-      console.debug('🔍 Direct parsing attempt:', {
-        hasValue: 'value' in parsed,
-        hasTimestamp: 'timestamp' in parsed,
-        hasExpiration: 'expiresAt' in parsed,
-        isExpired: parsed.expiresAt ? Date.now() > parsed.expiresAt : false,
-        structure: Object.keys(parsed),
-        valueType: typeof parsed.value,
-        valueLength: parsed.value?.length || 0
-      });
+      fallbackToken = localStorage.getItem('fluxion_auth_token');
+      if (fallbackToken) {
+        // Try to parse if it's structured data
+        try {
+          const parsed = JSON.parse(fallbackToken);
+          if (parsed.value) {
+            fallbackToken = parsed.value;
+          }
+        } catch {
+          // If parsing fails, use as-is if it looks like a JWT
+          if (!fallbackToken.includes('.') || fallbackToken.split('.').length !== 3) {
+            fallbackToken = null;
+          }
+        }
+      }
       
-      // Check if token is not expired
-      if (parsed.value && (!parsed.expiresAt || Date.now() < parsed.expiresAt)) {
-        console.warn('⚠️ Found valid token via direct parsing - using it!');
-        token = parsed.value;
-      } else {
-        console.warn('⚠️ Token found but expired or invalid');
+      // Try legacy storage keys
+      if (!fallbackToken) {
+        fallbackToken = localStorage.getItem('auth_token') || 
+                       localStorage.getItem('token') || 
+                       localStorage.getItem('fluxion_token');
       }
-    } catch (e) {
-      console.debug('Raw token is not JSON format, might be legacy string format');
-      // If it's not JSON, it might be a legacy string token
-      if (directToken.length > 20) { // Basic length check for token validity
-        console.warn('⚠️ Using raw token as fallback');
-        token = directToken;
-      }
+    } catch (error) {
+      console.error('Error accessing fallback token storage:', error);
     }
   }
   
-  // Final token validation
-  if (token) {
-    console.debug('✅ Legacy API Client - Token retrieved successfully:', {
-      source: token === authStorage.getToken() ? 'authStorage' : 'direct',
-      length: token.length,
-      preview: token.substring(0, 25) + '...'
-    });
-  } else {
-    console.error('❌ Legacy API Client - No valid token found by any method');
-  }
+  const finalToken = token || fallbackToken;
   
-  return token;
+  console.debug('🔍 Legacy API Client - Token retrieval with fallback:', {
+    tokenManagerToken: !!token,
+    fallbackToken: !!fallbackToken,
+    finalToken: !!finalToken,
+    tokenLength: finalToken?.length || 0,
+    tokenPreview: finalToken ? finalToken.substring(0, 25) + '...' : 'null',
+    timestamp: new Date().toISOString(),
+    source: token ? 'TokenManager' : fallbackToken ? 'Fallback' : 'None'
+  });
+  
+  return finalToken;
 };
 
 const handleAuthError = (): void => {
-  // Clear stored auth token using proper storage utilities
+  // Clear stored auth token using unified token manager
   if (typeof window !== 'undefined') {
+    userTokenManager.removeToken();
     authStorage.removeToken();
     // Keep the legacy localStorage removal for backward compatibility
     localStorage.removeItem('fluxion_user');

@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fluxion-postgres-lambda
+    environment:
+      POSTGRES_DB: fluxion_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.UTF8 --lc-ctype=en_US.UTF8"
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - postgres_lambda_data:/var/lib/postgresql/data
+      - ./deployment/init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - fluxion-lambda
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fluxion_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: fluxion-redis-lambda
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts
+    volumes:
+      - redis_lambda_data:/data
+    networks:
+      - fluxion-lambda
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # SAM Local API Gateway
+  sam-local:
+    image: public.ecr.aws/sam/build-nodejs18.x:latest
+    container_name: fluxion-sam-local
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "3001:3000"  # SAM local API
+    environment:
+      - SAM_CLI_TELEMETRY=0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    networks:
+      - fluxion-lambda
+    command: >
+      sh -c "
+        echo 'Installing dependencies...' &&
+        npm install &&
+        echo 'Building shared library...' &&
+        cd packages/fluxion-shared-lib &&
+        npm run build &&
+        cd /workspace &&
+        echo 'Starting SAM local API...' &&
+        sam local start-api \
+          --template-file template-microservices.yaml \
+          --host 0.0.0.0 \
+          --port 3000 \
+          --env-vars deployment/environment-configs/dev.env.json \
+          --docker-network fluxion-lambda_fluxion-lambda \
+          --warm-containers EAGER \
+          --log-file /workspace/sam-local.log
+      "
+    depends_on:
+      - postgres
+      - redis
+
+  # LocalStack for AWS services simulation
+  localstack:
+    image: localstack/localstack:latest
+    container_name: fluxion-localstack
+    ports:
+      - "4566:4566"  # LocalStack edge port
+    environment:
+      - SERVICES=s3,sqs,lambda,apigateway,iam,cloudformation
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_TMP_FOLDER=/tmp/localstack
+    volumes:
+      - "/tmp/localstack:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - fluxion-lambda
+
+volumes:
+  postgres_lambda_data:
+    driver: local
+  redis_lambda_data:
+    driver: local
+
+networks:
+  fluxion-lambda:
+    driver: bridge

@@ -15,6 +15,7 @@ import {
 import { WalletAddress } from '@/types/web3';
 import { authApi, userApi, handleApiResponse, handleApiError } from '@/utils/api';
 import { authStorage, userStorage } from '@/utils/storage';
+import { userTokenManager } from '@/utils/token-manager';
 import { useWeb3 } from './Web3Context';
 import { config } from '@/utils/config';
 import toast from 'react-hot-toast';
@@ -110,18 +111,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.debug('🔄 Initializing authentication from storage...');
       
-      const token = authStorage.getToken();
+      // Use unified token manager for consistent token retrieval
+      const token = userTokenManager.getToken();
+      const legacyToken = authStorage.getToken();
       const cachedUser = userStorage.getProfile();
-      const rawToken = localStorage.getItem('fluxion_auth_token');
-      const rawProfile = localStorage.getItem('fluxion_user_profile');
 
-      console.debug('🔍 Storage check results:', {
-        tokenExists: !!token,
+      console.debug('🔍 Auth initialization - storage check results:', {
+        tokenManagerToken: !!token,
+        legacyToken: !!legacyToken,
         profileExists: !!cachedUser,
-        rawTokenExists: !!rawToken,
-        rawProfileExists: !!rawProfile,
         tokenLength: token?.length || 0,
-        userId: cachedUser?.id || 'none'
+        userId: cachedUser?.id || 'none',
+        source: 'TokenManager'
       });
 
       if (token && cachedUser) {
@@ -157,7 +158,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: error.status
           });
           
-          authStorage.removeToken();
+          userTokenManager.removeToken();
+          authStorage.removeToken(); // Keep for backward compatibility
           userStorage.removeProfile();
           
           dispatch({ type: 'SET_AUTHENTICATED', payload: false });
@@ -171,7 +173,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('❌ Error initializing authentication:', error);
       // Clear any corrupted storage
-      authStorage.removeToken();
+      userTokenManager.removeToken();
+      authStorage.removeToken(); // Keep for backward compatibility
       userStorage.removeProfile();
       dispatch({ type: 'SET_AUTHENTICATED', payload: false });
       dispatch({ type: 'SET_USER', payload: null });
@@ -222,23 +225,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       // Clear any existing auth data first
-      authStorage.removeToken();
+      userTokenManager.removeToken();
+      authStorage.removeToken(); // Keep for backward compatibility
       userStorage.removeProfile();
       
-      // Store new authentication data
-      const tokenStored = authStorage.setToken(token, expiresInMs);
+      // Store new authentication data using unified token manager
+      const tokenManagerStored = userTokenManager.setToken(token, expiresInMs);
+      const legacyTokenStored = authStorage.setToken(token, expiresInMs); // Keep for backward compatibility
       const profileStored = userStorage.setProfile(user);
       
       console.debug('💾 Storage operations completed:', {
-        tokenStored,
+        tokenManagerStored,
+        legacyTokenStored,
         profileStored
       });
 
       // Critical: Immediate verification with detailed logging
       console.debug('🔍 Starting post-storage verification...');
       
-      const verifyToken = authStorage.getToken();
-      console.debug('🔍 authStorage.getToken() returned:', verifyToken);
+      const verifyToken = userTokenManager.getToken();
+      const legacyVerifyToken = authStorage.getToken();
+      console.debug('🔍 Token verification results:', {
+        tokenManagerToken: verifyToken,
+        legacyToken: legacyVerifyToken,
+        tokensMatch: verifyToken === legacyVerifyToken
+      });
       
       const verifyProfile = userStorage.getProfile();
       console.debug('🔍 userStorage.getProfile() returned:', verifyProfile);
@@ -263,7 +274,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Throw error if token storage verification fails
       if (!verifyToken) {
         console.error('❌ CRITICAL ERROR: Token storage failed verification!', {
-          tokenStorageAttempt: tokenStored,
+          tokenManagerAttempt: tokenManagerStored,
+          legacyTokenAttempt: legacyTokenStored,
           rawStorageExists: !!rawTokenCheck,
           storageFunctionType: typeof authStorage.setToken,
           retrievalFunctionType: typeof authStorage.getToken
@@ -353,8 +365,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = useCallback(() => {
-    // Clear storage
-    authStorage.removeToken();
+    // Clear storage using unified token manager
+    userTokenManager.removeToken();
+    authStorage.removeToken(); // Keep for backward compatibility
     userStorage.removeProfile();
     
     // Reset state
@@ -478,20 +491,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       // Clear any existing auth data first
-      authStorage.removeToken();
+      userTokenManager.removeToken();
+      authStorage.removeToken(); // Keep for backward compatibility
       userStorage.removeProfile();
       
-      // Store new authentication data
-      const tokenStored = authStorage.setToken(token, expiresInMs);
+      // Store new authentication data using unified token manager
+      const tokenManagerStored = userTokenManager.setToken(token, expiresInMs);
+      const legacyTokenStored = authStorage.setToken(token, expiresInMs); // Keep for backward compatibility
       const profileStored = userStorage.setProfile(user);
       
       console.debug('💾 Storage operations completed:', {
-        tokenStored,
+        tokenManagerStored,
+        legacyTokenStored,
         profileStored
       });
 
       // Critical: Immediate verification with detailed logging
-      const verifyToken = authStorage.getToken();
+      const verifyToken = userTokenManager.getToken();
+      const legacyVerifyToken = authStorage.getToken();
       const verifyProfile = userStorage.getProfile();
       const rawTokenCheck = localStorage.getItem('fluxion_auth_token');
       const rawProfileCheck = localStorage.getItem('fluxion_user_profile');

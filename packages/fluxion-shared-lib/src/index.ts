@@ -6,7 +6,7 @@ export * from './types/config';
 export * from './types/payment';
 export * from './types/user';
 export * from './types/invoice';
-export * from './types/express';
+// Express types are global declarations only
 
 // Database entities
 export { User } from './database/entities/User';
@@ -51,11 +51,47 @@ export * from './utils/response';
 // Middleware
 export * from './middleware';
 
-// Authentication
-export { AuthJWTPayload, authenticateJWT, optionalAuth, generateJWT } from './auth';
+// Simple Authentication utilities
+export { 
+  createJWTAuth,
+  requireRoles,
+  requireSystemAdmin,
+  SimpleAuthContext,
+  SimpleAuthOptions
+} from './middleware/simple-auth';
+
+// Legacy authentication for backward compatibility
+export { 
+  AuthJWTPayload, 
+  authenticateJWT, 
+  optionalAuth, 
+  generateJWT
+} from './middleware';
+
+// Enhanced authentication types and context
+export { 
+  AuthContext,
+  EnhancedJWTPayload,
+  RouteAuthConfig,
+  ServiceAuthConfig
+} from './auth/types';
 
 // Config
 export { config } from './config/index';
+
+// Service Router - automatic base path handling
+export { 
+  createServiceRouter, 
+  createRoute, 
+  ServiceRouter,
+  ServiceConfig,
+  RouteConfig 
+} from './config/service-router';
+
+// Lambda utilities
+export * from './lambda/adapter';
+export * from './lambda/types';
+export * from './lambda/utils';
 
 // Validation (specific exports to avoid conflicts)
 export { 

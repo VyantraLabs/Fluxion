@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fluxion Main Service - Individual Lambda Deployment
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, production]
+    Description: Environment name
+  
+  SharedLayerArn:
+    Type: String
+    Description: ARN of the shared library Lambda layer
+    Default: ""
+  
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: VPC Security Group IDs
+    Default: ""
+  
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: VPC Subnet IDs
+    Default: ""
+  
+  DBHost:
+    Type: String
+    Description: Database host
+    NoEcho: true
+  
+  DBUsername:
+    Type: String
+    Description: Database username
+    NoEcho: true
+  
+  DBPassword:
+    Type: String
+    Description: Database password
+    NoEcho: true
+  
+  DBDatabase:
+    Type: String
+    Description: Database name
+    NoEcho: true
+  
+  JWTSecret:
+    Type: String
+    Description: JWT signing secret
+    NoEcho: true
+  
+  RedisHost:
+    Type: String
+    Description: Redis host
+    Default: ""
+  
+  NotificationQueueUrl:
+    Type: String
+    Description: SQS queue URL for notifications
+    Default: ""
+
+Conditions:
+  HasVpcConfig: !Not [!Equals [!Join [",", !Ref VpcSubnetIds], ""]]
+  HasSharedLayer: !Not [!Equals [!Ref SharedLayerArn, ""]]
+  HasRedis: !Not [!Equals [!Ref RedisHost, ""]]
+  HasNotificationQueue: !Not [!Equals [!Ref NotificationQueueUrl, ""]]
+
+Resources:
+  # Main Service Lambda Function
+  MainServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-main-service"
+      CodeUri: dist/
+      Handler: lambda.handler
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 512
+      ReservedConcurrency: 50
+      Environment:
+        Variables:
+          NODE_ENV: !Ref Environment
+          LOG_LEVEL: info
+          DB_HOST: !Ref DBHost
+          DB_PORT: "5432"
+          DB_USERNAME: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+          DB_DATABASE: !Ref DBDatabase
+          REDIS_HOST: !If [HasRedis, !Ref RedisHost, !Ref "AWS::NoValue"]
+          REDIS_PORT: !If [HasRedis, "6379", !Ref "AWS::NoValue"]
+          JWT_SECRET: !Ref JWTSecret
+          JWT_EXPIRES_IN: "24h"
+          NOTIFICATION_QUEUE_URL: !If [HasNotificationQueue, !Ref NotificationQueueUrl, !Ref "AWS::NoValue"]
+          AWS_REGION: !Ref AWS::Region
+      VpcConfig: !If
+        - HasVpcConfig
+        - SecurityGroupIds: !Ref VpcSecurityGroupIds
+          SubnetIds: !Ref VpcSubnetIds
+        - !Ref "AWS::NoValue"
+      Layers: !If
+        - HasSharedLayer
+        - [!Ref SharedLayerArn]
+        - !Ref "AWS::NoValue"
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            RestApiId: !Ref MainServiceApi
+        HealthCheck:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+            RestApiId: !Ref MainServiceApi
+        WarmUp:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{"source": "warmup"}'
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt MainServiceDLQ.Arn
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+            - !If
+              - HasNotificationQueue
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !Ref NotificationQueueUrl
+              - !Ref "AWS::NoValue"
+
+  # API Gateway for Main Service
+  MainServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "fluxion-main-service-${Environment}"
+      StageName: !Ref Environment
+      EndpointConfiguration:
+        Type: REGIONAL
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Requested-With'"
+        AllowOrigin: "'*'"
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+
+  # Dead Letter Queue
+  MainServiceDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "fluxion-${Environment}-main-service-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeoutSeconds: 60
+
+  # CloudWatch Log Group
+  MainServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/fluxion-${Environment}-main-service"
+      RetentionInDays: 14
+
+  # CloudWatch Alarms
+  MainServiceErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "fluxion-${Environment}-main-service-errors"
+      AlarmDescription: "Main service Lambda function errors"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainServiceFunction
+
+  MainServiceDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "fluxion-${Environment}-main-service-duration"
+      AlarmDescription: "Main service Lambda function high duration"
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 25000  # 25 seconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainServiceFunction
+
+Outputs:
+  MainServiceApiUrl:
+    Description: "API Gateway endpoint URL for Main service"
+    Value: !Sub "https://${MainServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/"
+    Export:
+      Name: !Sub "${AWS::StackName}-main-service-url"
+
+  MainServiceFunctionArn:
+    Description: "Main Service Lambda Function ARN"
+    Value: !GetAtt MainServiceFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-main-service-arn"
+
+  MainServiceFunctionName:
+    Description: "Main Service Lambda Function Name"
+    Value: !Ref MainServiceFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-main-service-name"

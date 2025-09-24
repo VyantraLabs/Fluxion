@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { config } from '@/utils/config';
 import { authStorage, userStorage } from '@/utils/storage';
+import { userTokenManager, adminTokenManager } from '@/utils/token-manager';
 
 // Types for API responses
 export interface ApiResponse<T = any> {
@@ -177,111 +178,31 @@ export class UnifiedApiClient {
       return null;
     }
     
-    if (isAdmin) {
-      // For admin tokens, we'll need to handle this separately
-      // For now, let's access localStorage directly for admin tokens
-      const adminTokenKey = 'fluxion_admin_auth_token';
-      const rawToken = localStorage.getItem(adminTokenKey);
-      
-      if (!rawToken) {
-        console.debug('🔍 UnifiedApiClient - No admin token found');
-        return null;
-      }
-      
-      try {
-        // Handle both string and JSON stored tokens
-        if (rawToken.startsWith('{')) {
-          const tokenData = JSON.parse(rawToken);
-          const token = tokenData.value || tokenData.token;
-          console.debug('🔍 UnifiedApiClient - Admin token retrieved (JSON format):', {
-            exists: !!token,
-            length: token?.length || 0
-          });
-          return token;
-        }
-        console.debug('🔍 UnifiedApiClient - Admin token retrieved (string format):', {
-          exists: !!rawToken,
-          length: rawToken.length
-        });
-        return rawToken;
-      } catch (error) {
-        console.warn('Failed to parse stored admin token:', error);
-        return rawToken;
-      }
-    } else {
-      // For regular user tokens, try authStorage first, fallback to direct access if needed
-      let token = authStorage.getToken();
-      const rawTokenCheck = localStorage.getItem('fluxion_auth_token');
-      
-      // Enhanced debugging for user tokens
-      console.debug('🔍 UnifiedApiClient - Getting user auth token:', {
-        tokenExists: !!token,
-        tokenLength: token?.length || 0,
-        tokenPreview: token ? token.substring(0, 25) + '...' : 'null',
-        rawTokenExists: !!rawTokenCheck,
-        rawTokenLength: rawTokenCheck?.length || 0,
-        authStorageWorking: typeof authStorage.getToken === 'function',
-        timestamp: new Date().toISOString()
-      });
-
-      // If authStorage returns null but raw localStorage has data, try to parse directly
-      if (!token && rawTokenCheck) {
-        console.warn('⚠️ UnifiedApiClient - authStorage.getToken() returned null, trying direct localStorage parsing...');
-        
-        try {
-          const parsed = JSON.parse(rawTokenCheck);
-          console.debug('🔍 Direct parsing attempt:', {
-            hasValue: 'value' in parsed,
-            hasTimestamp: 'timestamp' in parsed,
-            hasExpiration: 'expiresAt' in parsed,
-            isExpired: parsed.expiresAt ? Date.now() > parsed.expiresAt : false,
-            keys: Object.keys(parsed),
-            valueType: typeof parsed.value,
-            valueLength: parsed.value?.length || 0
-          });
-          
-          // Check if token is not expired
-          if (parsed.value && (!parsed.expiresAt || Date.now() < parsed.expiresAt)) {
-            console.warn('⚠️ Found valid token via direct parsing - using it!');
-            token = parsed.value;
-          } else {
-            console.warn('⚠️ Token found but expired or invalid');
-          }
-        } catch (e) {
-          console.debug('Raw token is not JSON format, might be legacy string format');
-          // If it's not JSON, it might be a legacy string token
-          if (rawTokenCheck.length > 20) { // Basic length check for token validity
-            console.warn('⚠️ Using raw token as fallback');
-            token = rawTokenCheck;
-          }
-        }
-      }
-      
-      // Final token validation
-      if (token) {
-        console.debug('✅ UnifiedApiClient - Token retrieved successfully:', {
-          source: token === authStorage.getToken() ? 'authStorage' : 'direct',
-          length: token.length,
-          preview: token.substring(0, 25) + '...'
-        });
-      } else {
-        console.error('❌ UnifiedApiClient - No valid token found by any method');
-      }
-      
-      return token;
-    }
+    // Use unified token managers for consistent token retrieval
+    const token = isAdmin ? adminTokenManager.getToken() : userTokenManager.getToken();
+    
+    console.debug(`🔍 UnifiedApiClient - ${isAdmin ? 'Admin' : 'User'} token retrieval:`, {
+      tokenExists: !!token,
+      tokenLength: token?.length || 0,
+      tokenPreview: token ? token.substring(0, 25) + '...' : 'null',
+      isAdmin,
+      timestamp: new Date().toISOString()
+    });
+    
+    return token;
   }
 
   private handleAuthError(isAdmin: boolean = false): void {
     if (typeof window === 'undefined') return;
     
     if (isAdmin) {
-      // Handle admin auth error - use localStorage directly for now
-      localStorage.removeItem('fluxion_admin_auth_token');
+      // Handle admin auth error using token manager
+      adminTokenManager.removeToken();
       localStorage.removeItem('fluxion_admin_user');
     } else {
-      // Handle regular user auth error - use proper storage utilities
-      authStorage.removeToken();
+      // Handle regular user auth error using token manager
+      userTokenManager.removeToken();
+      authStorage.removeToken(); // Keep for backward compatibility
       userStorage.removeProfile();
     }
     

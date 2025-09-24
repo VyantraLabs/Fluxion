@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fluxion Admin Service - Individual Lambda Deployment
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, production]
+    Description: Environment name
+  
+  SharedLayerArn:
+    Type: String
+    Description: ARN of the shared library Lambda layer
+    Default: ""
+  
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: VPC Security Group IDs
+    Default: ""
+  
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: VPC Subnet IDs
+    Default: ""
+  
+  DBHost:
+    Type: String
+    Description: Database host
+    NoEcho: true
+  
+  DBUsername:
+    Type: String
+    Description: Database username
+    NoEcho: true
+  
+  DBPassword:
+    Type: String
+    Description: Database password
+    NoEcho: true
+  
+  DBDatabase:
+    Type: String
+    Description: Database name
+    NoEcho: true
+  
+  JWTSecret:
+    Type: String
+    Description: JWT signing secret
+    NoEcho: true
+  
+  RedisHost:
+    Type: String
+    Description: Redis host
+    Default: ""
+
+Conditions:
+  HasVpcConfig: !Not [!Equals [!Join [",", !Ref VpcSubnetIds], ""]]
+  HasSharedLayer: !Not [!Equals [!Ref SharedLayerArn, ""]]
+  HasRedis: !Not [!Equals [!Ref RedisHost, ""]]
+
+Resources:
+  # Admin Service Lambda Function
+  AdminServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-admin-service"
+      CodeUri: dist/
+      Handler: lambda.handler
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrency: 25
+      Environment:
+        Variables:
+          NODE_ENV: !Ref Environment
+          LOG_LEVEL: info
+          DB_HOST: !Ref DBHost
+          DB_PORT: "5432"
+          DB_USERNAME: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+          DB_DATABASE: !Ref DBDatabase
+          REDIS_HOST: !If [HasRedis, !Ref RedisHost, !Ref "AWS::NoValue"]
+          REDIS_PORT: !If [HasRedis, "6379", !Ref "AWS::NoValue"]
+          JWT_SECRET: !Ref JWTSecret
+          JWT_EXPIRES_IN: "24h"
+          AWS_REGION: !Ref AWS::Region
+      VpcConfig: !If
+        - HasVpcConfig
+        - SecurityGroupIds: !Ref VpcSecurityGroupIds
+          SubnetIds: !Ref VpcSubnetIds
+        - !Ref "AWS::NoValue"
+      Layers: !If
+        - HasSharedLayer
+        - [!Ref SharedLayerArn]
+        - !Ref "AWS::NoValue"
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            RestApiId: !Ref AdminServiceApi
+        HealthCheck:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+            RestApiId: !Ref AdminServiceApi
+        WarmUp:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Input: '{"source": "warmup"}'
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt AdminServiceDLQ.Arn
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  # API Gateway for Admin Service
+  AdminServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "fluxion-admin-service-${Environment}"
+      StageName: !Ref Environment
+      EndpointConfiguration:
+        Type: REGIONAL
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Requested-With'"
+        AllowOrigin: "'*'"
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+
+  # Dead Letter Queue
+  AdminServiceDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "fluxion-${Environment}-admin-service-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeoutSeconds: 60
+
+  # CloudWatch Log Group
+  AdminServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/fluxion-${Environment}-admin-service"
+      RetentionInDays: 14
+
+  # CloudWatch Alarms
+  AdminServiceErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "fluxion-${Environment}-admin-service-errors"
+      AlarmDescription: "Admin service Lambda function errors"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AdminServiceFunction
+
+  AdminServiceDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "fluxion-${Environment}-admin-service-duration"
+      AlarmDescription: "Admin service Lambda function high duration"
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 25000  # 25 seconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AdminServiceFunction
+
+Outputs:
+  AdminServiceApiUrl:
+    Description: "API Gateway endpoint URL for Admin service"
+    Value: !Sub "https://${AdminServiceApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/"
+    Export:
+      Name: !Sub "${AWS::StackName}-admin-service-url"
+
+  AdminServiceFunctionArn:
+    Description: "Admin Service Lambda Function ARN"
+    Value: !GetAtt AdminServiceFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-admin-service-arn"
+
+  AdminServiceFunctionName:
+    Description: "Admin Service Lambda Function Name"
+    Value: !Ref AdminServiceFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-admin-service-name"

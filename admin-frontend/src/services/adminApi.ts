@@ -2,6 +2,7 @@
 // Direct admin endpoint usage only - no complex fallbacks
 
 import { adminAuthStorage } from '@/utils/storage'
+import { adminTokenManager } from '@/utils/token-manager'
 
 // Simple response interface
 interface ApiResponse<T> {
@@ -39,11 +40,20 @@ class SimplifiedAdminApi {
   }
 
   private getAuthHeaders(): HeadersInit {
-    const token = typeof window !== 'undefined' ? adminAuthStorage.getToken() : null
+    // Use the unified admin token manager for consistent token retrieval
+    const token = typeof window !== 'undefined' ? adminTokenManager.getToken() : null
+    
+    console.debug('🔐 AdminAPI - Getting auth headers:', {
+      hasToken: !!token,
+      tokenLength: token?.length || 0,
+      tokenPreview: token ? token.substring(0, 25) + '...' : 'null'
+    });
     
     return {
       'Content-Type': 'application/json',
       'X-Client-Type': 'admin-frontend',
+      'X-Client-Version': '1.0.0',
+      'X-Request-Timestamp': new Date().toISOString(),
       ...(token && { 'Authorization': `Bearer ${token}` }),
     }
   }
@@ -59,10 +69,12 @@ class SimplifiedAdminApi {
       ...options.headers,
     }
     
-    console.log('Admin API Request:', {
+    console.log('🌐 Admin API Request:', {
       url,
       method: options.method || 'GET',
-      hasAuth: !!headers.Authorization
+      hasAuth: !!headers.Authorization,
+      authHeader: headers.Authorization ? '[PRESENT]' : '[MISSING]',
+      timestamp: new Date().toISOString()
     })
     
     const response = await fetch(url, {
@@ -72,12 +84,25 @@ class SimplifiedAdminApi {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error('Admin API Error:', {
+      console.error('❌ Admin API Error:', {
         status: response.status,
         statusText: response.statusText,
         url,
-        error: errorData
+        error: errorData,
+        hasAuth: !!headers.Authorization
       })
+      
+      // Handle authentication errors
+      if (response.status === 401) {
+        console.error('🚫 Admin authentication error - clearing tokens');
+        adminTokenManager.removeToken();
+        adminAuthStorage.removeToken();
+        // Redirect to admin login if not already there
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
+      
       throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
     }
 
@@ -326,22 +351,35 @@ class SimplifiedAdminApi {
   
   async debugCurrentUser(): Promise<ApiResponse<any>> {
     console.log('🔍 Admin API: Debug - getting current user info')
-    const token = adminAuthStorage.getToken()
+    const token = adminTokenManager.getToken()
+    const legacyToken = adminAuthStorage.getToken()
     
     if (!token) {
-      console.log('❌ Admin API: No token found')
-      return { success: false, error: { code: 'NO_TOKEN', message: 'No authentication token found' } }
+      console.log('❌ Admin API: No token found via TokenManager')
+      return { 
+        success: false, 
+        error: { 
+          code: 'NO_TOKEN', 
+          message: 'No authentication token found',
+          details: {
+            tokenManagerResult: null,
+            legacyStorageResult: legacyToken ? 'exists' : 'null',
+            allKeys: typeof window !== 'undefined' ? Object.keys(localStorage).filter(k => k.includes('admin')) : []
+          }
+        } 
+      }
     }
     
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
-      console.log('🔍 Admin API: JWT Payload:', payload)
+      const payload = adminTokenManager.decodeTokenPayload()
+      console.log('🔍 Admin API: JWT Payload via TokenManager:', payload)
       return { 
         success: true, 
         data: { 
           jwtPayload: payload,
           tokenExists: true,
-          tokenLength: token.length 
+          tokenLength: token.length,
+          source: 'TokenManager'
         } 
       }
     } catch (error) {

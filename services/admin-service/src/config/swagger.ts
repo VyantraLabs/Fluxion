@@ -1758,14 +1758,14 @@ const specs = swaggerJsdoc(options);
 /**
  * Setup Swagger documentation middleware
  */
-export const setupSwagger = (app: Express): void => {
+export const setupSwagger = (app: Express, basePath: string = '/docs'): void => {
   // Swagger UI options
   const swaggerUiOptions = {
     customCss: `
       .swagger-ui .topbar { display: none; }
       .swagger-ui .scheme-container { display: none; }
     `,
-    customSiteTitle: 'Fluxion API Documentation',
+    customSiteTitle: 'Fluxion Admin API Documentation',
     customfavIcon: '/favicon.ico',
     swaggerOptions: {
       persistAuthorization: true,
@@ -1780,17 +1780,17 @@ export const setupSwagger = (app: Express): void => {
     }
   };
 
-  // Setup Swagger UI
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions));
+  // Setup Swagger UI with configurable base path
+  app.use(basePath, swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions));
   
   // Serve raw OpenAPI spec
-  app.get('/api-docs.json', (_req, res) => {
+  app.get(`${basePath}.json`, (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.send(specs);
   });
 
-  console.log('📚 Swagger documentation available at /api-docs');
-  console.log('📄 OpenAPI spec available at /api-docs.json');
+  console.log(`📚 Swagger documentation available at ${basePath}`);
+  console.log(`📄 OpenAPI spec available at ${basePath}.json`);
 };
 
 /**

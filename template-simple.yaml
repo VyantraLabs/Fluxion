@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fluxion Microservices Lambda Deployment - Simple Version
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, production]
+    Description: Environment name
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        NODE_ENV: !Ref Environment
+        LOG_LEVEL: info
+        REGION: !Ref AWS::Region
+
+Resources:
+  # Main Service Function
+  MainServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-main-service"
+      CodeUri: deployment/lambda-services/main-service/
+      Handler: lambda.handler
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+
+  # Admin Service Function  
+  AdminServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "fluxion-${Environment}-admin-service"
+      CodeUri: deployment/lambda-services/admin-service/
+      Handler: lambda.handler
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /admin/{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    
+  MainServiceUrl:
+    Description: "Main Service URL"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    
+  AdminServiceUrl:
+    Description: "Admin Service URL"  
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/admin/"

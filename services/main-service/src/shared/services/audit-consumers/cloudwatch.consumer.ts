@@ -1,17 +1,25 @@
-import AWS from 'aws-sdk';
+import { 
+  CloudWatchLogsClient, 
+  CreateLogGroupCommand,
+  CreateLogStreamCommand,
+  DescribeLogStreamsCommand,
+  PutLogEventsCommand,
+  PutRetentionPolicyCommand,
+  PutLogEventsCommandInput 
+} from '@aws-sdk/client-cloudwatch-logs';
 import { Logger } from '../../utils/logger';
 import { AuditEvent, EventConsumer } from '../audit-event.service';
 
 export class CloudWatchAuditConsumer implements EventConsumer {
   name = 'cloudwatch';
   private logger = new Logger('CloudWatchAuditConsumer');
-  private cloudWatchLogs: AWS.CloudWatchLogs;
+  private cloudWatchLogs: CloudWatchLogsClient;
   private logGroupName: string;
   private logStreamName: string;
   private sequenceToken?: string;
 
   constructor() {
-    this.cloudWatchLogs = new AWS.CloudWatchLogs({
+    this.cloudWatchLogs = new CloudWatchLogsClient({
       region: process.env.AWS_REGION || 'us-east-1'
     });
     
@@ -58,10 +66,11 @@ export class CloudWatchAuditConsumer implements EventConsumer {
       await this.ensureLogGroup();
 
       // Check if log stream exists
-      const streams = await this.cloudWatchLogs.describeLogStreams({
+      const command = new DescribeLogStreamsCommand({
         logGroupName: this.logGroupName,
         logStreamNamePrefix: this.logStreamName
-      }).promise();
+      });
+      const streams = await this.cloudWatchLogs.send(command);
 
       const existingStream = streams.logStreams?.find(
         stream => stream.logStreamName === this.logStreamName
@@ -71,14 +80,15 @@ export class CloudWatchAuditConsumer implements EventConsumer {
         this.sequenceToken = existingStream.uploadSequenceToken;
       } else {
         // Create log stream
-        await this.cloudWatchLogs.createLogStream({
+        const createCommand = new CreateLogStreamCommand({
           logGroupName: this.logGroupName,
           logStreamName: this.logStreamName
-        }).promise();
+        });
+        await this.cloudWatchLogs.send(createCommand);
       }
 
     } catch (error: any) {
-      if (error.code !== 'ResourceAlreadyExistsException') {
+      if (error.name !== 'ResourceAlreadyExistsException') {
         throw error;
       }
     }
@@ -86,18 +96,20 @@ export class CloudWatchAuditConsumer implements EventConsumer {
 
   private async ensureLogGroup(): Promise<void> {
     try {
-      await this.cloudWatchLogs.createLogGroup({
+      const createCommand = new CreateLogGroupCommand({
         logGroupName: this.logGroupName
-      }).promise();
+      });
+      await this.cloudWatchLogs.send(createCommand);
 
       // Set retention policy (30 days)
-      await this.cloudWatchLogs.putRetentionPolicy({
+      const retentionCommand = new PutRetentionPolicyCommand({
         logGroupName: this.logGroupName,
         retentionInDays: 30
-      }).promise();
+      });
+      await this.cloudWatchLogs.send(retentionCommand);
 
     } catch (error: any) {
-      if (error.code !== 'ResourceAlreadyExistsException') {
+      if (error.name !== 'ResourceAlreadyExistsException') {
         throw error;
       }
     }
@@ -132,7 +144,7 @@ export class CloudWatchAuditConsumer implements EventConsumer {
       }, null, 2)
     };
 
-    const params: AWS.CloudWatchLogs.PutLogEventsRequest = {
+    const params: PutLogEventsCommandInput = {
       logGroupName: this.logGroupName,
       logStreamName: this.logStreamName,
       logEvents: [logEntry]
@@ -142,7 +154,8 @@ export class CloudWatchAuditConsumer implements EventConsumer {
       params.sequenceToken = this.sequenceToken;
     }
 
-    const result = await this.cloudWatchLogs.putLogEvents(params).promise();
+    const command = new PutLogEventsCommand(params);
+    const result = await this.cloudWatchLogs.send(command);
     this.sequenceToken = result.nextSequenceToken;
   }
 
@@ -186,7 +199,7 @@ export class CloudWatchAuditConsumer implements EventConsumer {
       for (let i = 0; i < logEvents.length; i += batchSize) {
         const batch = logEvents.slice(i, i + batchSize);
         
-        const params: AWS.CloudWatchLogs.PutLogEventsRequest = {
+        const params: PutLogEventsCommandInput = {
           logGroupName: this.logGroupName,
           logStreamName: this.logStreamName,
           logEvents: batch
@@ -196,7 +209,8 @@ export class CloudWatchAuditConsumer implements EventConsumer {
           params.sequenceToken = this.sequenceToken;
         }
 
-        const result = await this.cloudWatchLogs.putLogEvents(params).promise();
+        const command = new PutLogEventsCommand(params);
+        const result = await this.cloudWatchLogs.send(command);
         this.sequenceToken = result.nextSequenceToken;
       }
 

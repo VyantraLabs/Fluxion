@@ -88,7 +88,7 @@ export const AppDataSource = new DataSource({
   // Development settings
   synchronize: false, // Disabled to use migrations instead
   logging: config.database.logging,
-  logger: config.database.logging ? new (require('../shared/utils/typeorm-logger').CustomTypeOrmLogger)() : false,
+  logger: config.database.logging ? new (require('../utils/typeorm-logger').CustomTypeOrmLogger)() : false,
   
   // Performance settings
   cache: config.features.enableRedisCache ? {

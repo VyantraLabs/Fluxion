@@ -1,0 +1,91 @@
+# SAM Configuration for Main Service
+
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "fluxion-main-service"
+s3_bucket = "fluxion-deployments"
+s3_prefix = "main-service"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+stack_name = "fluxion-main-service-dev"
+s3_bucket = "fluxion-deployments-dev"
+s3_prefix = "main-service/dev"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "Environment=dev"
+]
+tags = [
+    "Environment=dev",
+    "Service=main-service",
+    "Project=fluxion"
+]
+
+# Development Environment
+[dev]
+[dev.deploy.parameters]
+stack_name = "fluxion-main-service-dev"
+s3_bucket = "fluxion-deployments-dev"
+s3_prefix = "main-service/dev"
+region = "us-east-1"
+confirm_changeset = false
+parameter_overrides = [
+    "Environment=dev",
+    "DBHost={{resolve:ssm:/fluxion/dev/db-host}}",
+    "DBUsername={{resolve:ssm:/fluxion/dev/db-username}}",
+    "DBPassword={{resolve:ssm:/fluxion/dev/db-password}}",
+    "DBDatabase={{resolve:ssm:/fluxion/dev/db-database}}",
+    "JWTSecret={{resolve:ssm:/fluxion/dev/jwt-secret}}"
+]
+
+# Staging Environment
+[staging]
+[staging.deploy.parameters]
+stack_name = "fluxion-main-service-staging"
+s3_bucket = "fluxion-deployments-staging"
+s3_prefix = "main-service/staging"
+region = "us-east-1"
+confirm_changeset = true
+parameter_overrides = [
+    "Environment=staging",
+    "DBHost={{resolve:ssm:/fluxion/staging/db-host}}",
+    "DBUsername={{resolve:ssm:/fluxion/staging/db-username}}",
+    "DBPassword={{resolve:ssm:/fluxion/staging/db-password}}",
+    "DBDatabase={{resolve:ssm:/fluxion/staging/db-database}}",
+    "JWTSecret={{resolve:ssm:/fluxion/staging/jwt-secret}}"
+]
+
+# Production Environment
+[production]
+[production.deploy.parameters]
+stack_name = "fluxion-main-service-production"
+s3_bucket = "fluxion-deployments-production"
+s3_prefix = "main-service/production"
+region = "us-east-1"
+confirm_changeset = true
+parameter_overrides = [
+    "Environment=production",
+    "DBHost={{resolve:ssm:/fluxion/production/db-host}}",
+    "DBUsername={{resolve:ssm:/fluxion/production/db-username}}",
+    "DBPassword={{resolve:ssm:/fluxion/production/db-password}}",
+    "DBDatabase={{resolve:ssm:/fluxion/production/db-database}}",
+    "JWTSecret={{resolve:ssm:/fluxion/production/jwt-secret}}",
+    "VpcSecurityGroupIds={{resolve:ssm:/fluxion/production/vpc-security-groups}}",
+    "VpcSubnetIds={{resolve:ssm:/fluxion/production/vpc-subnets}}"
+]
+tags = [
+    "Environment=production",
+    "Service=main-service",
+    "Project=fluxion",
+    "CostCenter=Engineering"
+]

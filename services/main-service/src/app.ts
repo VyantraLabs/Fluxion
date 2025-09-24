@@ -1,16 +1,19 @@
 import express, { Request, Response } from 'express';
 import helmet from 'helmet';
-import { Logger } from '@fluxion/shared-lib/utils/logger';
 import { 
+  Logger, 
   requestLogger, 
   corsHandler, 
   rateLimit, 
   errorHandler, 
   notFoundHandler,
   responseHelpers,
-  asyncHandler
-} from '@fluxion/shared-lib/middleware';
-import { APIResponse } from '@fluxion/shared-lib/types/common';
+  asyncHandler,
+  APIResponse,
+  createJWTAuth,
+  createServiceRouter,
+  createRoute
+} from '@fluxion/shared-lib';
 import { setupSwagger } from './config/swagger';
 
 // Import route handlers for main service
@@ -70,17 +73,43 @@ app.use(corsHandler);
 app.use(requestLogger);
 app.use(responseHelpers);
 
-// Setup Swagger documentation (only in non-production environments)
-if (process.env.NODE_ENV !== 'production') {
-  setupSwagger(app);
-}
-
 // Rate limiting
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   maxRequests: process.env.NODE_ENV === 'production' ? 100 : 1000,
   skipSuccessfulRequests: false
 }));
+
+// Create service router - automatically handles SERVICE_BASE_PATH
+const serviceRouter = createServiceRouter({
+  serviceName: 'main',
+  app,
+  logger
+});
+
+// Authentication - configure public paths using the service router's base path
+const auth = createJWTAuth({
+  secret: process.env.JWT_SECRET,
+  publicPaths: [
+    serviceRouter.getFullPath('/health'),
+    serviceRouter.getFullPath('/docs'),
+    serviceRouter.getFullPath('/swagger'),
+    serviceRouter.getFullPath('/users/auth/message'),
+    serviceRouter.getFullPath('/users/auth/verify'),
+    serviceRouter.getFullPath('/public/*'),
+    '/', // Legacy root endpoint
+    '/health', // Legacy health endpoint
+    '/metrics' // Legacy metrics endpoint
+  ],
+  skipInDevelopment: false
+});
+
+app.use(auth);
+
+// Setup Swagger documentation (only in non-production environments)
+if (process.env.NODE_ENV !== 'production') {
+  setupSwagger(app, serviceRouter.getBasePath() + '/docs');
+}
 
 // Initialize database connection on startup
 let dbInitialized = false;
@@ -110,118 +139,141 @@ initializeDatabase().catch(error => {
   logger.error('Startup database initialization failed', { error: error.message });
 });
 
-// Health check endpoint
-app.get('/health', asyncHandler(async (_req: Request, res: Response) => {
-  await initializeDatabase();
+// Mount standard service endpoints (health, metrics, info) - automatically prefixed with base path
+serviceRouter.mountStandardEndpoints({
+  healthHandler: asyncHandler(async (_req: Request, res: Response) => {
+    await initializeDatabase();
+    
+    const { getDatabase } = await import('./shared/database/client');
+    const { getBlockchainService } = await import('./shared/blockchain/client');
+    const { getNotificationService } = await import('./shared/notifications/client');
+
+    const [dbHealth, blockchainHealth, notificationHealth] = await Promise.allSettled([
+      getDatabase().healthCheck(),
+      getBlockchainService().healthCheck(),
+      getNotificationService().healthCheck()
+    ]);
+
+    const services = {
+      database: dbHealth.status === 'fulfilled' ? dbHealth.value.status : 'unhealthy',
+      blockchain: blockchainHealth.status === 'fulfilled' ? blockchainHealth.value.status : 'unhealthy',
+      notifications: notificationHealth.status === 'fulfilled' ? notificationHealth.value.status : 'unhealthy'
+    };
+
+    const overallStatus = Object.values(services).every(s => s === 'healthy') ? 'healthy' : 'unhealthy';
+
+    const healthStatus = {
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      version: process.env.VERSION || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      services,
+      service_name: 'main-service',
+      memory_usage: process.memoryUsage(),
+      uptime: process.uptime()
+    };
+
+    logger.info('Health check completed', { status: overallStatus, services });
+    res.success(healthStatus, overallStatus === 'healthy' ? 200 : 503);
+  }),
   
-  const { getDatabase } = await import('./shared/database/client');
-  const { getBlockchainService } = await import('./shared/blockchain/client');
-  const { getNotificationService } = await import('./shared/notifications/client');
+  metricsHandler: (_req: Request, res: Response) => {
+    const metrics = {
+      timestamp: new Date().toISOString(),
+      service: 'main-service',
+      process: {
+        uptime: process.uptime(),
+        memory_usage: process.memoryUsage(),
+        cpu_usage: process.cpuUsage(),
+        node_version: process.version,
+        platform: process.platform,
+        arch: process.arch
+      },
+      environment: {
+        node_env: process.env.NODE_ENV,
+        port: process.env.PORT
+      }
+    };
 
-  const [dbHealth, blockchainHealth, notificationHealth] = await Promise.allSettled([
-    getDatabase().healthCheck(),
-    getBlockchainService().healthCheck(),
-    getNotificationService().healthCheck()
-  ]);
-
-  const services = {
-    database: dbHealth.status === 'fulfilled' ? dbHealth.value.status : 'unhealthy',
-    blockchain: blockchainHealth.status === 'fulfilled' ? blockchainHealth.value.status : 'unhealthy',
-    notifications: notificationHealth.status === 'fulfilled' ? notificationHealth.value.status : 'unhealthy'
-  };
-
-  const overallStatus = Object.values(services).every(s => s === 'healthy') ? 'healthy' : 'unhealthy';
-
-  const healthStatus = {
-    status: overallStatus,
-    timestamp: new Date().toISOString(),
-    version: process.env.VERSION || '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    services,
-    service_name: 'main-service',
-    memory_usage: process.memoryUsage(),
-    uptime: process.uptime()
-  };
-
-  logger.info('Health check completed', { status: overallStatus, services });
-  res.success(healthStatus, overallStatus === 'healthy' ? 200 : 503);
-}));
-
-// Get configurable base paths from environment
-const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
-const ADMIN_BASE_PATH = process.env.ADMIN_BASE_PATH || '/admin';
-logger.info('Configuring API routes', { 
-  mainBasePath: API_BASE_PATH,
-  adminBasePath: ADMIN_BASE_PATH 
+    res.json(metrics);
+  }
 });
 
-// API routes for main service with configurable base path
-app.use(`${API_BASE_PATH}/invoices`, invoiceRoutes);
-app.use(`${API_BASE_PATH}/payments`, paymentRoutes);
-app.use(`${API_BASE_PATH}/users`, userRoutes); // Authentication endpoints
-app.use(`${API_BASE_PATH}/user`, userRoutes);  // Authenticated user endpoints
-app.use(`${API_BASE_PATH}/organizations`, organizationRoutes); // Organization management endpoints
-app.use(`${API_BASE_PATH}/templates`, templateRoutes);
-app.use(`${API_BASE_PATH}/public`, publicRoutes);
-app.use(`${API_BASE_PATH}/dashboard`, dashboardRoutes);
-app.use(`${API_BASE_PATH}/config`, configRoutes);
-app.use(`${API_BASE_PATH}/reminders`, reminderRoutes);
+// Mount all business logic routes - automatically prefixed with SERVICE_BASE_PATH
+serviceRouter.mountRoutes([
+  createRoute('/invoices', invoiceRoutes, 'Invoice management operations'),
+  createRoute('/payments', paymentRoutes, 'Payment verification and tracking'),
+  createRoute('/users', userRoutes, 'User authentication and management'),
+  createRoute('/user', userRoutes, 'Authenticated user profile operations'),
+  createRoute('/organizations', organizationRoutes, 'Organization management'),
+  createRoute('/templates', templateRoutes, 'Invoice template management'),
+  createRoute('/public', publicRoutes, 'Public access endpoints'),
+  createRoute('/dashboard', dashboardRoutes, 'Dashboard data and analytics'),
+  createRoute('/config', configRoutes, 'Service configuration endpoints'),
+  createRoute('/reminders', reminderRoutes, 'Invoice reminder management'),
+  createRoute('/admin', adminRoutes, 'Admin operations')
+]);
 
-// Admin routes with configurable base path
-app.use(ADMIN_BASE_PATH, adminRoutes);
+// Log all mounted routes for verification
+serviceRouter.logRoutes();
 
-// API info endpoint
+// Legacy root endpoint for backward compatibility
 app.get('/', (req, res) => {
+  const basePath = serviceRouter.getBasePath();
   const apiInfo = {
     service: 'Fluxion Main Service',
     version: process.env.VERSION || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
     description: 'Main API service for user-facing operations',
-    base_path: API_BASE_PATH,
+    base_path: basePath,
     endpoints: {
+      service_info: serviceRouter.getFullPath('/info'),
+      health: serviceRouter.getFullPath('/health'),
+      metrics: serviceRouter.getFullPath('/metrics'),
+      documentation: serviceRouter.getFullPath('/docs'),
       invoices: {
-        base: `${API_BASE_PATH}/invoices`,
+        base: serviceRouter.getFullPath('/invoices'),
         description: 'Invoice management operations for authenticated users',
         methods: ['GET', 'POST', 'PUT']
       },
       payments: {
-        base: `${API_BASE_PATH}/payments`,
+        base: serviceRouter.getFullPath('/payments'),
         description: 'Payment verification and tracking',
         methods: ['GET', 'POST']
       },
       authentication: {
-        base: `${API_BASE_PATH}/users`,
+        base: serviceRouter.getFullPath('/users'),
         description: 'User authentication (signup, login)',
         methods: ['POST']
       },
       user: {
-        base: `${API_BASE_PATH}/user`,
+        base: serviceRouter.getFullPath('/user'),
         description: 'Authenticated user profile and data',
         methods: ['GET', 'PUT', 'DELETE']
       },
       organizations: {
-        base: `${API_BASE_PATH}/organizations`,
+        base: serviceRouter.getFullPath('/organizations'),
         description: 'Organization management and user permissions',
         methods: ['GET', 'POST', 'PUT', 'DELETE']
       },
       templates: {
-        base: `${API_BASE_PATH}/templates`,
+        base: serviceRouter.getFullPath('/templates'),
         description: 'Invoice templates management',
         methods: ['GET', 'POST', 'PUT', 'DELETE']
       },
       public: {
-        base: `${API_BASE_PATH}/public`,
+        base: serviceRouter.getFullPath('/public'),
         description: 'Public access endpoints',
         methods: ['GET']
       },
       dashboard: {
-        base: `${API_BASE_PATH}/dashboard`,
+        base: serviceRouter.getFullPath('/dashboard'),
         description: 'User dashboard data and statistics',
         methods: ['GET']
       },
       reminders: {
-        base: `${API_BASE_PATH}/reminders`,
+        base: serviceRouter.getFullPath('/reminders'),
         description: 'Invoice reminder management and scheduling',
         methods: ['GET', 'POST', 'PUT', 'DELETE']
       }
@@ -233,17 +285,17 @@ app.get('/', (req, res) => {
     success: true,
     data: apiInfo,
     meta: {
-      requestId: req.context?.requestId || 'unknown',
+      requestId: (req as any).context?.requestId || 'unknown',
       timestamp: new Date().toISOString()
     }
   };
 
-  logger.info('API info requested');
+  logger.info('Legacy API info requested');
   res.json(response);
 });
 
-// Metrics endpoint
-app.get('/metrics', (_req, res) => {
+// Legacy metrics endpoint for backward compatibility
+app.get('/metrics', (req: Request, res: Response) => {
   const metrics = {
     timestamp: new Date().toISOString(),
     service: 'main-service',
@@ -257,7 +309,7 @@ app.get('/metrics', (_req, res) => {
     },
     environment: {
       node_env: process.env.NODE_ENV,
-      port: process.env.PORT || 3000
+      port: process.env.PORT
     }
   };
 

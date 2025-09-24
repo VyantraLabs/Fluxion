@@ -29,6 +29,7 @@ import { useOrganization, useUserPermissions } from '@/contexts/OrganizationCont
 import { Organization, ActivityLog, User } from '@/types/user';
 import { cn } from '@/utils/helpers';
 import { apiRequest, handleApiResponse, organizationApi } from '@/utils/api';
+import { config } from '@/utils/config';
 
 interface OrganizationStats {
   totalUsers: number;
@@ -252,16 +253,16 @@ export default function OrganizationDashboardPage() {
     try {
       switch (tab) {
         case 'invoices':
-          // Load organization invoices
-          const invoicesResponse = await apiRequest.get(`/invoices?organization_id=${organization.id}&limit=20`);
+          // Load organization invoices - organization context extracted from JWT token by backend
+          const invoicesResponse = await apiRequest.get(`${config.api.basePath}/invoices?limit=20`);
           if (invoicesResponse.success && invoicesResponse.data) {
             setInvoices(invoicesResponse.data.invoices || []);
           }
           break;
           
         case 'team':
-          // Load organization team members
-          const teamResponse = await apiRequest.get(`/organizations/${organization.id}/users`);
+          // Load organization team members - organization context extracted from JWT token by backend
+          const teamResponse = await apiRequest.get(`${config.api.basePath}/organizations/${organization.id}/users`);
           if (teamResponse.success && teamResponse.data) {
             setTeamMembers(teamResponse.data.users || []);
           }
@@ -276,8 +277,8 @@ export default function OrganizationDashboardPage() {
           break;
           
         case 'templates':
-          // Load organization templates
-          const templatesResponse = await apiRequest.get(`/templates?organization_id=${organization.id}`);
+          // Load organization templates - organization context extracted from JWT token by backend
+          const templatesResponse = await apiRequest.get(`${config.api.basePath}/templates`);
           if (templatesResponse.success && templatesResponse.data) {
             setTemplates(templatesResponse.data.templates || []);
           }
