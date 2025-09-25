@@ -6,7 +6,7 @@
 // Load configuration first
 import { config } from './config';
 import { app } from './app';
-import { Logger } from '@fluxion/shared-lib/utils/logger';
+import { Logger } from './shared/utils/logger';
 
 const logger = new Logger('AdminService');
 

@@ -22,13 +22,12 @@ import { paymentRoutes } from './modules/payments/handlers';
 import { userRoutes } from './modules/users/handlers';
 import { organizationRoutes } from './modules/organizations/handlers';
 import { templateRoutes } from './modules/templates/handlers';
-import { publicRoutes } from './modules/public/handlers';
+import { publicRoutes } from './modules-legacy/public/handlers';
 import { dashboardRoutes } from './modules/dashboard/handlers';
 import { configRoutes } from './modules/config/handlers';
 import { reminderRoutes } from './modules/reminders/handlers';
 
-// Import admin route handlers
-import { adminRoutes } from './modules/admin/handlers';
+// Admin routes removed - admin functionality moved to admin-service
 
 // Initialize audit event system
 import { auditConsumerRegistry } from './shared/services/audit-consumers';
@@ -97,9 +96,7 @@ const auth = createJWTAuth({
     serviceRouter.getFullPath('/users/auth/message'),
     serviceRouter.getFullPath('/users/auth/verify'),
     serviceRouter.getFullPath('/public/*'),
-    '/', // Legacy root endpoint
-    '/health', // Legacy health endpoint
-    '/metrics' // Legacy metrics endpoint
+    '/api' // Service info endpoint at base path
   ],
   skipInDevelopment: false
 });
@@ -211,13 +208,32 @@ serviceRouter.mountRoutes([
   createRoute('/dashboard', dashboardRoutes, 'Dashboard data and analytics'),
   createRoute('/config', configRoutes, 'Service configuration endpoints'),
   createRoute('/reminders', reminderRoutes, 'Invoice reminder management'),
-  createRoute('/admin', adminRoutes, 'Admin operations')
+  // Admin routes removed - functionality moved to admin-service on port 3001
 ]);
 
 // Log all mounted routes for verification
 serviceRouter.logRoutes();
 
-// Legacy root endpoint for backward compatibility
+// Service info endpoint at /api base path
+app.get('/api', (_req: Request, res: Response) => {
+  const serviceInfo = {
+    service: 'main-service',
+    version: process.env.VERSION || '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      metrics: '/api/metrics',
+      docs: '/api/docs',
+      users: '/api/users',
+      invoices: '/api/invoices',
+      payments: '/api/payments',
+      templates: '/api/templates',
+      organizations: '/api/organizations'
+    }
+  };
+  res.json(serviceInfo);
+});
+
+// Legacy root endpoint for backward compatibility (DEPRECATED - will be removed)
 app.get('/', (req, res) => {
   const basePath = serviceRouter.getBasePath();
   const apiInfo = {

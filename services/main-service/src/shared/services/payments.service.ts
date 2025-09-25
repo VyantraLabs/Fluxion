@@ -1,4 +1,4 @@
-import { DatabaseService } from '../../database/client';
+import { DatabaseService } from '../database/client';
 import { PaymentRecord, TenantContext, FluxionError, ErrorCodes, PaymentStatus, QueryOptions, MultiTableQueryResult } from '../../types/common';
 import { Logger } from '../utils/logger';
 import { InvoicesService } from './invoices.service';

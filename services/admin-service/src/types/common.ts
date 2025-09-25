@@ -268,6 +268,9 @@ export interface MultiTableQueryResult<T> {
   totalCount?: number;
 }
 
+// Alias for backward compatibility
+export type PaginatedResult<T> = MultiTableQueryResult<T>;
+
 export interface ValidationError {
   field: string;
   message: string;

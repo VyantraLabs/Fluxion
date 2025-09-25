@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { AdminService } from './service';
-import { Logger } from '@fluxion/shared-lib/utils/logger';
+import { Logger } from '../../shared/utils/logger';
 import { 
   authenticateJWT, 
   validateRequest, 
   asyncHandler
-} from '@fluxion/shared-lib/middleware';
+} from '../../shared/middleware';
 import { permissionMiddleware } from '../../shared/utils/permissions';
 import { getTenantContext, extractTenantContext } from '../../shared/middleware/tenant';
 import { adminAuthRoutes } from './auth.handlers';

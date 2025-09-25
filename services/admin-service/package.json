@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node dist/index.js",
     "start:dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only src/index.ts",
-    "dev": "npm run start:dev",
+    "start:simple": "ts-node src/index-simple.ts",
+    "dev": "npm run start:simple",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "jest",
